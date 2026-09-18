@@ -67,6 +67,19 @@ async def _mark_failed(
     )
 
 
+async def _run_simplification_if_extractable(
+    db: AsyncIOMotorDatabase,
+    circular_id: str,
+    processing_status: str,
+) -> str:
+    """Run Bedrock simplification only after successful text extraction."""
+    if processing_status != "extracted":
+        return processing_status
+
+    await process_simplification(db, circular_id)
+    return "ai_draft_generated"
+
+
 # ─── URL ingestion worker ─────────────────────────────────────────────────────
 
 async def process_url_ingestion(
@@ -89,20 +102,16 @@ async def process_url_ingestion(
             url=url,
             source_id=source_id,
         )
-        
-        status = circular.processing.status
-        if status == "extracted":
-            # 1. Simplify
-            await process_simplification(db, circular.id)
-            # 2. Translate
+        processing_status = await _run_simplification_if_extractable(
+            db, circular.id, circular.processing.status
+        )
+        if processing_status == "ai_draft_generated":
             await create_translations(db, circular.id, ["hi-IN", "kn-IN"])
-            
-            # Fetch updated status to reflect AI completion
             updated_doc = await db.circulars.find_one({"id": circular.id})
             if updated_doc:
-                status = updated_doc.get("processing", {}).get("status", "translation_generated")
+                processing_status = updated_doc.get("processing", {}).get("status", "translation_generated")
 
-        await _mark_done(db, job_id, circular.id, status)
+        await _mark_done(db, job_id, circular.id, processing_status)
     except Exception as exc:
         await _mark_failed(db, job_id, str(exc))
 
@@ -136,20 +145,16 @@ async def process_text_ingestion(
             state=data.get("state"),
             date_text=data.get("date_text"),
         )
-        
-        status = circular.processing.status
-        if status == "extracted":
-            # 1. Simplify
-            await process_simplification(db, circular.id)
-            # 2. Translate
+        processing_status = await _run_simplification_if_extractable(
+            db, circular.id, circular.processing.status
+        )
+        if processing_status == "ai_draft_generated":
             await create_translations(db, circular.id, ["hi-IN", "kn-IN"])
-            
-            # Fetch updated status to reflect AI completion
             updated_doc = await db.circulars.find_one({"id": circular.id})
             if updated_doc:
-                status = updated_doc.get("processing", {}).get("status", "translation_generated")
+                processing_status = updated_doc.get("processing", {}).get("status", "translation_generated")
 
-        await _mark_done(db, job_id, circular.id, status)
+        await _mark_done(db, job_id, circular.id, processing_status)
     except Exception as exc:
         await _mark_failed(db, job_id, str(exc))
 

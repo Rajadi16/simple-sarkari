@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     db_name: str = "janvaani"
 
     # ─── AWS ───
+    aws_enabled: bool = True
     aws_region: str = "ap-south-1"
     s3_bucket: str = "janvaani-dev"
     bedrock_model_id: str = "anthropic.claude-3-sonnet-20240229-v1:0"

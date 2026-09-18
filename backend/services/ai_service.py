@@ -4,9 +4,9 @@ AI service — Amazon Bedrock integration for simplification and structured extr
 
 import json
 import logging
+import asyncio
 from pydantic import BaseModel, Field
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from bson.objectid import ObjectId
 
 from config import get_settings
 from lib.aws import get_bedrock_client
@@ -22,14 +22,12 @@ class AIExtractionResult(BaseModel):
     simplified_title: str
     summary: str
     simplified_text: str
-    required_action: str | None = None
-    who_is_affected: str | None = None
-    important_dates: list[dict] = Field(default_factory=list)
-    amounts: list[dict] = Field(default_factory=list)
-    eligibility: list[str] = Field(default_factory=list)
+    key_points: list[str] = Field(default_factory=list)
+    action_items: list[str] = Field(default_factory=list)
+    deadlines: list[dict] = Field(default_factory=list)
+    target_audience: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     source_excerpts: list[str] = Field(default_factory=list)
-    keywords: list[str] = Field(default_factory=list)
 
 
 # ─── Fixed system prompt ─────────────────────────────────────────────────────
@@ -47,9 +45,9 @@ Rules you MUST follow:
 - Include source excerpts to back every important fact.
 
 Return a JSON object with EXACTLY these fields:
-  simplified_title (string), summary (string), simplified_text (string), required_action (string or null),
-  who_is_affected (string or null), important_dates (list of objects), amounts (list of objects), eligibility (list of strings),
-  warnings (list of strings), source_excerpts (list of strings), keywords (list of strings)
+    simplified_title (string), summary (string), simplified_text (string),
+    key_points (list of strings), action_items (list of strings), deadlines (list of objects),
+    target_audience (list of strings), warnings (list of strings), source_excerpts (list of strings)
 """
 
 
@@ -71,14 +69,15 @@ async def simplify_document(original_text: str) -> AIExtractionResult:
     system = [{"text": SIMPLIFICATION_SYSTEM_PROMPT}]
     
     try:
-        response = client.converse(
+        response = await asyncio.to_thread(
+            client.converse,
             modelId=settings.bedrock_model_id,
             messages=messages,
             system=system,
             inferenceConfig={
                 "maxTokens": 4096,
                 "temperature": 0.0,
-            }
+            },
         )
         
         output_text = response['output']['message']['content'][0]['text']
@@ -121,14 +120,12 @@ async def process_simplification(db: AsyncIOMotorDatabase, circular_id: str) -> 
         simplified_title=result.simplified_title,
         summary=result.summary,
         simplified_text=result.simplified_text,
-        required_action=result.required_action,
-        who_is_affected=result.who_is_affected,
-        important_dates=result.important_dates,
-        amounts=result.amounts,
-        eligibility=result.eligibility,
+        key_points=result.key_points,
+        action_items=result.action_items,
+        deadlines=result.deadlines,
+        target_audience=result.target_audience,
         warnings=result.warnings,
         source_excerpts=result.source_excerpts,
-        keywords=result.keywords
     )
     
     # 4. Update DB

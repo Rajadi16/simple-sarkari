@@ -5,7 +5,9 @@ System routes — health checks and readiness probes.
 from fastapi import APIRouter, Depends
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from config import get_settings
 from lib.db import get_db
+from lib.aws import check_s3_access
 
 router = APIRouter(tags=["system"])
 
@@ -19,13 +21,7 @@ async def health():
 @router.get("/health/ready")
 async def readiness(db: AsyncIOMotorDatabase = Depends(get_db)):
     """
-    Readiness check — verifies MongoDB and S3 connectivity.
-
-    Returns:
-      status       — "ok" if all checks pass, "degraded" if any fail
-      database     — "ready" | "unavailable"
-      storage      — "s3" | "local" | "unavailable"
-      s3_bucket    — bucket name when storage == "s3", null otherwise
+    Readiness check — verifies database and configured storage connectivity.
     """
     # ── MongoDB ──
     try:
@@ -34,30 +30,18 @@ async def readiness(db: AsyncIOMotorDatabase = Depends(get_db)):
     except Exception:
         db_status = "unavailable"
 
-    # ── S3 ──
-    storage_status = "unavailable"
-    s3_bucket = None
-    try:
-        from config import get_settings
-        from lib.aws import get_s3_client
-        settings = get_settings()
-        # head_bucket is a lightweight auth+existence check (no data transferred)
-        get_s3_client().head_bucket(Bucket=settings.s3_bucket)
-        storage_status = "s3"
-        s3_bucket = settings.s3_bucket
-    except Exception:
-        # Credentials missing or bucket unreachable — check local fallback
-        from pathlib import Path
-        local_data = Path(__file__).resolve().parent.parent / "data"
-        if local_data.is_dir():
-            storage_status = "local"
-        # else stays "unavailable"
-
-    overall = "ok" if db_status == "ready" and storage_status in ("s3", "local") else "degraded"
+    settings = get_settings()
+    if not settings.aws_enabled:
+        storage_status = "disabled"
+    else:
+        try:
+            await check_s3_access()
+            storage_status = "ready"
+        except Exception:
+            storage_status = "unavailable"
 
     return {
-        "status": overall,
+        "status": "ok" if db_status == "ready" and storage_status in ("ready", "disabled") else "degraded",
         "database": db_status,
         "storage": storage_status,
-        "s3_bucket": s3_bucket,
     }
