@@ -27,3 +27,4 @@ passlib[bcrypt]==1.7.4
 
 # Utilities
 structlog==25.4.0
+python-ulid==3.0.0
