@@ -133,13 +133,39 @@ async def check_robots_txt(url: str, user_agent: str = "*") -> bool:
                 ) as client:
                     resp = await client.get(robots_url)
                     if resp.status_code == 200:
-                        rp.parse(resp.text.splitlines())
+                        body = resp.text
+
+                        # ── False-positive guard ──────────────────────────────
+                        # Some gov sites (e.g. PIB on certain IPs) serve an HTML
+                        # error page with HTTP 200 instead of a real robots.txt.
+                        # RobotFileParser would misread HTML tags like <html>,
+                        # <head>, <title> as malformed directives and sometimes
+                        # infer Disallow: / — blocking all fetches incorrectly.
+                        # Detection: a real robots.txt never starts with an HTML
+                        # tag. If the body looks like HTML, treat it as
+                        # "robots.txt unavailable → assume allowed."
+                        stripped = body.lstrip()
+                        is_html_response = (
+                            stripped.lower().startswith("<!doctype")
+                            or stripped.lower().startswith("<html")
+                            or stripped.lower().startswith("<head")
+                            or "<title>" in stripped[:200].lower()
+                            or "access denied" in stripped[:200].lower()
+                            or "request rejected" in stripped[:200].lower()
+                        )
+                        if is_html_response:
+                            # Not a real robots.txt — treat as absent (allow all)
+                            _robots_cache[domain] = (rp, now)
+                            return True
+
+                        rp.parse(body.splitlines())
                     else:
-                        # robots.txt not available — assume allowed
+                        # Non-200 (403, 404, 5xx) — robots.txt not available,
+                        # assume allowed per robots.txt spec.
                         _robots_cache[domain] = (rp, now)
                         return True
             except Exception:
-                # Network error fetching robots.txt — log and allow
+                # Network error fetching robots.txt — allow
                 _robots_cache[domain] = (rp, now)
                 return True
 
