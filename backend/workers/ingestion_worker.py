@@ -20,6 +20,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from lib.dates import utcnow
 from services.crawler_service import ingest_single_url, ingest_pasted_text
+from services.ai_service import process_simplification
 
 
 # ─── Job status helpers ───────────────────────────────────────────────────────
@@ -65,6 +66,19 @@ async def _mark_failed(
     )
 
 
+async def _run_simplification_if_extractable(
+    db: AsyncIOMotorDatabase,
+    circular_id: str,
+    processing_status: str,
+) -> str:
+    """Run Bedrock simplification only after successful text extraction."""
+    if processing_status != "extracted":
+        return processing_status
+
+    await process_simplification(db, circular_id)
+    return "ai_draft_generated"
+
+
 # ─── URL ingestion worker ─────────────────────────────────────────────────────
 
 async def process_url_ingestion(
@@ -87,7 +101,10 @@ async def process_url_ingestion(
             url=url,
             source_id=source_id,
         )
-        await _mark_done(db, job_id, circular.id, circular.processing.status)
+        processing_status = await _run_simplification_if_extractable(
+            db, circular.id, circular.processing.status
+        )
+        await _mark_done(db, job_id, circular.id, processing_status)
     except Exception as exc:
         await _mark_failed(db, job_id, str(exc))
 
@@ -121,7 +138,10 @@ async def process_text_ingestion(
             state=data.get("state"),
             date_text=data.get("date_text"),
         )
-        await _mark_done(db, job_id, circular.id, circular.processing.status)
+        processing_status = await _run_simplification_if_extractable(
+            db, circular.id, circular.processing.status
+        )
+        await _mark_done(db, job_id, circular.id, processing_status)
     except Exception as exc:
         await _mark_failed(db, job_id, str(exc))
 

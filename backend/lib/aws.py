@@ -5,6 +5,8 @@ All clients are lazily initialized singletons.
 Use the `get_*_client()` functions from service code.
 """
 
+import asyncio
+
 import boto3
 from config import get_settings
 
@@ -18,6 +20,8 @@ def get_s3_client():
     global _s3_client
     if _s3_client is None:
         settings = get_settings()
+        if not settings.aws_enabled:
+            raise RuntimeError("AWS integration is disabled")
         _s3_client = boto3.client("s3", region_name=settings.aws_region)
     return _s3_client
 
@@ -45,7 +49,8 @@ def get_polly_client():
 async def upload_to_s3(key: str, body: bytes, content_type: str = "application/octet-stream") -> str:
     """Upload bytes to S3 and return the key."""
     settings = get_settings()
-    get_s3_client().put_object(
+    await asyncio.to_thread(
+        get_s3_client().put_object,
         Bucket=settings.s3_bucket,
         Key=key,
         Body=body,
@@ -57,8 +62,15 @@ async def upload_to_s3(key: str, body: bytes, content_type: str = "application/o
 async def download_from_s3(key: str) -> bytes:
     """Download an object from S3 and return the raw bytes."""
     settings = get_settings()
-    response = get_s3_client().get_object(Bucket=settings.s3_bucket, Key=key)
-    return response["Body"].read()
+
+    def read_object() -> bytes:
+        response = get_s3_client().get_object(
+            Bucket=settings.s3_bucket,
+            Key=key,
+        )
+        return response["Body"].read()
+
+    return await asyncio.to_thread(read_object)
 
 
 def generate_signed_url(key: str, expires_in: int = 3600) -> str:
@@ -68,4 +80,13 @@ def generate_signed_url(key: str, expires_in: int = 3600) -> str:
         "get_object",
         Params={"Bucket": settings.s3_bucket, "Key": key},
         ExpiresIn=expires_in,
+    )
+
+
+async def check_s3_access() -> None:
+    """Verify that the configured bucket is reachable by the backend."""
+    settings = get_settings()
+    await asyncio.to_thread(
+        get_s3_client().head_bucket,
+        Bucket=settings.s3_bucket,
     )
