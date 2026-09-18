@@ -75,6 +75,10 @@ def _detect_block(resp: httpx.Response) -> str | None:
     Heuristic detection of soft blocks that don't surface as 403/429.
 
     Returns a block reason string, or None if the response looks legitimate.
+
+    IMPORTANT: Be conservative — only flag pages that are clearly challenge/block
+    pages, not legitimate pages that happen to reference CDN or security services
+    in their HTML (e.g. cdnjs.cloudflare.com as a CSS/JS CDN is NOT a block).
     """
     url_lower = str(resp.url).lower()
     text_lower = resp.text[:4096].lower() if resp.content else ""
@@ -85,15 +89,41 @@ def _detect_block(resp: httpx.Response) -> str | None:
         if any(kw in location for kw in ("login", "signin", "auth", "captcha")):
             return "login_redirect"
 
-    # CAPTCHA pages often arrive as 200 with CAPTCHA markup
-    captcha_signals = ("captcha", "are you human", "bot check", "verify you are human",
-                       "cloudflare", "ddos-guard", "access denied")
+    # Cloudflare challenge: must have challenge-specific markers, NOT just a CDN reference.
+    # Real CF challenge pages have ray IDs, challenge forms, or specific title text.
+    # Sites using cdnjs.cloudflare.com for CSS/JS are legitimate — do NOT flag those.
+    cf_challenge_signals = (
+        "just a moment",                    # CF "Just a moment..." title
+        "enable javascript and cookies",    # CF JS challenge body text
+        "checking your browser",            # CF browser check text
+        "challenge-form",                   # CF challenge form id
+        "cf-please-wait",                   # CF spinner div
+        "ray id",                           # CF Ray-ID footer (only in challenge pages)
+        "__cf_bm",                          # CF bot management cookie name in page
+    )
+    if any(sig in text_lower for sig in cf_challenge_signals):
+        return "captcha_challenge"
+
+    # CAPTCHA pages (non-CF)
+    captcha_signals = (
+        "captcha",
+        "are you human",
+        "bot check",
+        "verify you are human",
+        "ddos-guard",
+    )
     if any(sig in text_lower for sig in captcha_signals):
         return "captcha_challenge"
 
-    # WAF JSON blocks
-    if "waf" in text_lower and resp.status_code in (200, 403):
-        return "waf_block"
+    # WAF JSON / HTML block pages (status 200 with rejection body)
+    if resp.status_code == 200:
+        waf_signals = (
+            "request rejected",             # F5/Imperva WAF
+            "this request has been blocked", # generic WAF
+            "access denied by policy",      # policy block
+        )
+        if any(sig in text_lower for sig in waf_signals):
+            return "waf_block"
 
     return None
 
@@ -199,11 +229,20 @@ class BaseCrawlerAdapter(abc.ABC):
         client = await self._get_client()
         try:
             resp = await client.get(url, headers=headers)
-        except httpx.HTTPError as exc:
+        except (httpx.RemoteProtocolError, httpx.TransportError) as exc:
+            # Server closed the keep-alive connection — retry once with a fresh client
+            await self.close()  # force client recreation
+            client = await self._get_client()
+            try:
+                resp = await client.get(url, headers=headers)
+            except Exception as exc2:
+                return FetchResult(url=url, status_code=0,
+                                   blocked=True, block_reason="network_error",
+                                   body=b"", content_hash=None)
+        except Exception as exc:
             return FetchResult(url=url, status_code=0,
                                blocked=True, block_reason="network_error",
                                body=b"", content_hash=None)
-
         # 4b. 304 Not Modified
         if resp.status_code == 304:
             return FetchResult(url=url, status_code=304, not_modified=True,

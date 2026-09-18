@@ -222,6 +222,7 @@ async def test_adapter(name: str, config: dict) -> dict:
 
     try:
         # ── 1. Raw listing fetch first (to capture block reason) ──
+        # Use the adapter's own fetch() so verify=False etc. are applied correctly
         seed_url = source["seed_urls"][0]
         raw = await adapter.fetch(seed_url)
         result["elapsed_s"] = round(time.monotonic() - t0, 1)
@@ -233,7 +234,7 @@ async def test_adapter(name: str, config: dict) -> dict:
             await adapter.close()
             return result
 
-        # ── 2. Full fetch_listing() ──
+        # ── 2. Full fetch_listing() — reuse same adapter (client already open) ──
         candidates = await adapter.fetch_listing()
         result["candidates_found"] = len(candidates)
 
