@@ -1,0 +1,29 @@
+# Core
+fastapi==0.115.12
+uvicorn[standard]==0.34.3
+pydantic==2.11.3
+pydantic-settings==2.9.1
+python-dotenv==1.1.0
+python-multipart==0.0.20
+
+# Database
+motor==3.7.1
+pymongo==4.12.1
+
+# AWS
+boto3==1.38.34
+
+# HTTP & Scraping
+httpx==0.28.1
+beautifulsoup4==4.13.4
+lxml==5.4.0
+
+# PDF
+pymupdf==1.25.5
+
+# Auth
+python-jose[cryptography]==3.4.0
+passlib[bcrypt]==1.7.4
+
+# Utilities
+structlog==25.4.0
