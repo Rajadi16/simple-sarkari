@@ -20,6 +20,10 @@ async def lifespan(app: FastAPI):
     """Manage startup and shutdown lifecycle."""
     # ── Startup ──
     await connect_db()
+    # Seed PIB source entry if not already present
+    from lib.db import get_db as _get_db
+    from services.crawler_service import ensure_pib_source
+    await ensure_pib_source(_get_db())
     yield
     # ── Shutdown ──
     await close_db()

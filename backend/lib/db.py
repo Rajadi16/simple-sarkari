@@ -69,9 +69,26 @@ async def _create_indexes() -> None:
     await db.reviews.create_index([("status", 1), ("created_at", -1)])
     await db.reviews.create_index([("assigned_to", 1), ("status", 1)])
 
-    # jobs
+    # jobs (Team 3)
     await db.jobs.create_index("idempotency_key", unique=True, sparse=True)
     await db.jobs.create_index([("status", 1), ("created_at", -1)])
+
+    # ingestion_jobs (Person 1 — ingestion pipeline)
+    await db.ingestion_jobs.create_index([("status", 1), ("created_at", -1)])
+    await db.ingestion_jobs.create_index("job_type")
+
+    # sources (Person 1 — source registry)
+    await db.sources.create_index("source_id", unique=True)
+
+    # crawl_runs (Person 1)
+    await db.crawl_runs.create_index([("source_id", 1), ("started_at", -1)])
+    await db.crawl_runs.create_index("status")
+
+    # circulars — Person 1 specific indexes (nested CanonicalCircular fields)
+    await db.circulars.create_index("provenance.content_hash", sparse=True)
+    await db.circulars.create_index("source.source_id")
+    await db.circulars.create_index("source.source_reference_id", sparse=True)
+    await db.circulars.create_index("processing.status")
 
     # audio_assets
     await db.audio_assets.create_index(
