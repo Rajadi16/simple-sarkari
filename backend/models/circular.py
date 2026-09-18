@@ -1,63 +1,173 @@
 """
-Circular model — a normalized government document.
+Canonical circular models — the handoff contract between Person 1 and Team 3.
+
+Matches CONTEXT.md §4.1 (CandidateDocument) and §4.2 (CanonicalCircular) exactly.
+
+Person 1 (Aditya) owns the shape defined here.
+Team 3 should only ADD sub-objects (translation/review/audio) — never rename
+or remove fields defined below.
+
+DO NOT touch ai_service.py, translation_service.py, audio_service.py, or
+routers/review.py — those belong to Team 3.
 """
 
+from __future__ import annotations
+from typing import Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
 from lib.dates import utcnow
 
 
-class Circular(BaseModel):
-    """A single government circular / notification / order."""
-    id: str = Field(default="")
+# ─── §4.1 Discovery stage ─────────────────────────────────────────────────────
+
+class CandidateDocument(BaseModel):
+    """
+    Logged the moment the crawler finds a link, before fetch/parse.
+    Internal to Person 1's pipeline; makes broken links distinguishable
+    from broken parsers when something goes wrong.
+    """
     source_id: str
+    detail_url: str
+    document_url: Optional[str] = None
+    title: Optional[str] = None
+    published_date_text: Optional[str] = None
+    document_type: Optional[str] = None
+    department: Optional[str] = None
+    language: str = "en-IN"
+    discovered_from_url: Optional[str] = None
+    source_reference_id: Optional[str] = None
+
+
+# ─── §4.2 Handoff stage — nested sub-objects ─────────────────────────────────
+
+class SourceInfo(BaseModel):
+    source_id: str
+    source_name: str
+    source_domain: str
     source_url: str
-    content_hash: str | None = None
+    discovered_from_url: Optional[str] = None
+    official_document_url: str
+    source_reference_id: Optional[str] = None
 
-    # Original content
-    title: str
-    subject: str | None = None
-    department: str | None = None
-    document_type: str | None = None  # press_release, order, circular, notification, gazette
-    government_level: str = "central"  # central | state
-    state: str | None = None
-    original_language: str = "en-IN"
-    original_text: str | None = None
 
-    # AI-simplified content (English)
-    simplified_title: str | None = None
-    simplified_text: str | None = None
-    summary: str | None = None
-    who_is_affected: str | None = None
-    required_action: str | None = None
-    important_dates: list[dict] = Field(default_factory=list)
-    amounts: list[dict] = Field(default_factory=list)
-    eligibility: list[str] = Field(default_factory=list)
+class Classification(BaseModel):
+    government_level: str                          # "central" | "state"
+    state: Optional[str] = None
+    department: str
+    document_type: str                             # press_release | order | circular | ...
+    category: Optional[str] = None
+    sub_category: Optional[str] = None
+    language: str = "en-IN"
+
+
+class Identity(BaseModel):
+    title_original: str
+    document_number: Optional[str] = None
+    reference_number: Optional[str] = None
+    gazette_number: Optional[str] = None
+    subject_original: Optional[str] = None
+
+
+class Dates(BaseModel):
+    published_date: Optional[str] = None          # ISO 8601 date string, e.g. "2026-06-01"
+    effective_from: Optional[str] = None
+    effective_until: Optional[str] = None
+    last_updated: Optional[str] = None
+    date_text_original: Optional[str] = None       # Raw text as it appeared on the page
+
+
+class ContentSection(BaseModel):
+    heading: Optional[str] = None
+    text: str
+    page_start: Optional[int] = None
+    page_end: Optional[int] = None
+
+
+class Content(BaseModel):
+    original_text: str                             # Verbatim extracted text — required
+    clean_text: Optional[str] = None              # Nav/boilerplate stripped version
+    sections: list[ContentSection] = Field(default_factory=list)
+
+
+class Attachment(BaseModel):
+    url: str
+    type: str                                      # "pdf" | "doc" | "image" | ...
+    title: Optional[str] = None
+    file_size_bytes: Optional[int] = None
+    s3_key: Optional[str] = None                  # raw/{id}/v{n}/original.pdf
+
+
+class Provenance(BaseModel):
+    retrieved_at: datetime
+    retrieval_timezone: str = "Asia/Kolkata"
+    http_status: Optional[int] = None             # null for pasted-text path
+    content_hash: str                              # "sha256:<hex>"
+    raw_html_s3_key: Optional[str] = None         # raw/{id}/v1/original.html
+    raw_pdf_s3_key: Optional[str] = None          # raw/{id}/v1/original.pdf
+    parser_name: Optional[str] = None
+    parser_version: Optional[str] = None
+    robots_checked: bool = False
+    terms_checked: bool = False
+
+
+class Extraction(BaseModel):
+    status: str = "complete"                       # "complete" | "partial" | "failed"
+    method: str = "html"                           # "html" | "pdf" | "text"
+    confidence: Optional[float] = None
     warnings: list[str] = Field(default_factory=list)
-    source_excerpts: list[str] = Field(default_factory=list)
-    keywords: list[str] = Field(default_factory=list)
+    missing_fields: list[str] = Field(default_factory=list)
 
-    # S3 references
-    raw_s3_key: str | None = None
-    extracted_s3_key: str | None = None
 
-    # Processing state machine
-    processing_status: str = "discovered"
-    # discovered → fetch_queued → fetched → extracted → ai_draft_generated
-    # → translation_generated → in_review → approved → audio_queued
-    # → audio_ready → published
-    # Failure: blocked_by_robots | blocked_by_source | rate_limited
-    #          fetch_failed | parse_failed | ocr_failed | translation_failed
-    #          review_rejected | audio_failed
+class Processing(BaseModel):
+    """
+    Processing state machine.
 
-    # Publication
+    Person 1 writes only "extracted" or "manual_review_required".
+    All later statuses (translation_pending → under_review → approved →
+    audio_ready → published) belong to Team 3.
+    """
+    status: str = "extracted"
     published: bool = False
-    published_at: datetime | None = None
+    translation_languages: list[str] = Field(default_factory=list)
 
-    # Timestamps
+
+# ─── §4.2 CanonicalCircular — the full handoff document ──────────────────────
+
+class CanonicalCircular(BaseModel):
+    """
+    The document written to MongoDB's `circulars` collection after extraction.
+
+    Required fields (§4.4): id, source.source_id, source.source_name,
+    source.source_url, source.official_document_url, identity.title_original,
+    classification.government_level, classification.department,
+    classification.document_type, classification.language,
+    content.original_text (or an attachment PDF),
+    provenance.retrieved_at, provenance.content_hash,
+    processing.status, processing.published.
+
+    All other fields default to None/empty — never invent values.
+    """
+    schema_version: str = "1.0"
+    id: str                                        # e.g. "circular_01JABC123"
+
+    source: SourceInfo
+    classification: Classification
+    identity: Identity
+    dates: Dates = Field(default_factory=Dates)
+    content: Content
+    attachments: list[Attachment] = Field(default_factory=list)
+    provenance: Provenance
+    extraction: Extraction = Field(default_factory=Extraction)
+    processing: Processing = Field(default_factory=Processing)
+    source_specific_metadata: dict = Field(default_factory=dict)
+
+    # Mongo timestamps — managed by the service layer
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
+
+# ─── Legacy flat model — kept for backward-compat with any Team 3 code ───────
+# DO NOT use for new ingestion code. Use CanonicalCircular above.
 
 class DocumentVersion(BaseModel):
     """Immutable snapshot when a source document changes."""
@@ -66,5 +176,5 @@ class DocumentVersion(BaseModel):
     version: int = 1
     content_hash: str
     raw_s3_key: str
-    extracted_text: str | None = None
+    extracted_text: Optional[str] = None
     created_at: datetime = Field(default_factory=utcnow)
