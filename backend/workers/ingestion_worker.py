@@ -20,6 +20,8 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from lib.dates import utcnow
 from services.crawler_service import ingest_single_url, ingest_pasted_text
+from services.ai_service import process_simplification
+from services.translation_service import create_translations
 
 
 # ─── Job status helpers ───────────────────────────────────────────────────────
@@ -87,7 +89,20 @@ async def process_url_ingestion(
             url=url,
             source_id=source_id,
         )
-        await _mark_done(db, job_id, circular.id, circular.processing.status)
+        
+        status = circular.processing.status
+        if status == "extracted":
+            # 1. Simplify
+            await process_simplification(db, circular.id)
+            # 2. Translate
+            await create_translations(db, circular.id, ["hi-IN", "kn-IN"])
+            
+            # Fetch updated status to reflect AI completion
+            updated_doc = await db.circulars.find_one({"id": circular.id})
+            if updated_doc:
+                status = updated_doc.get("processing", {}).get("status", "translation_generated")
+
+        await _mark_done(db, job_id, circular.id, status)
     except Exception as exc:
         await _mark_failed(db, job_id, str(exc))
 
@@ -121,7 +136,20 @@ async def process_text_ingestion(
             state=data.get("state"),
             date_text=data.get("date_text"),
         )
-        await _mark_done(db, job_id, circular.id, circular.processing.status)
+        
+        status = circular.processing.status
+        if status == "extracted":
+            # 1. Simplify
+            await process_simplification(db, circular.id)
+            # 2. Translate
+            await create_translations(db, circular.id, ["hi-IN", "kn-IN"])
+            
+            # Fetch updated status to reflect AI completion
+            updated_doc = await db.circulars.find_one({"id": circular.id})
+            if updated_doc:
+                status = updated_doc.get("processing", {}).get("status", "translation_generated")
+
+        await _mark_done(db, job_id, circular.id, status)
     except Exception as exc:
         await _mark_failed(db, job_id, str(exc))
 
