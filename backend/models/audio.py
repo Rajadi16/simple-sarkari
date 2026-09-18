@@ -2,6 +2,8 @@
 Audio asset model — metadata for generated speech files.
 """
 
+import uuid
+
 from pydantic import BaseModel, Field
 from datetime import datetime
 from lib.dates import utcnow
@@ -9,7 +11,7 @@ from lib.dates import utcnow
 
 class AudioAsset(BaseModel):
     """Metadata for a Polly-generated audio file stored in S3."""
-    id: str = Field(default="")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     circular_id: str
     translation_id: str
     language: str  # e.g. "hi-IN"
