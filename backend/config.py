@@ -7,6 +7,7 @@ All backend-only secrets live here. Never expose these to the frontend.
 
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+from pathlib import Path
 
 
 class Settings(BaseSettings):
@@ -21,6 +22,8 @@ class Settings(BaseSettings):
     # ─── AWS ───
     aws_enabled: bool = True
     aws_region: str = "ap-south-1"
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
     s3_bucket: str = "janvaani-dev"
     bedrock_model_id: str = "anthropic.claude-3-sonnet-20240229-v1:0"
     polly_region: str = "ap-south-1"
@@ -42,7 +45,8 @@ class Settings(BaseSettings):
     crawler_max_pdf_size_mb: int = 50
     crawler_request_timeout_seconds: int = 30
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": str(Path(__file__).parent / ".env"), "env_file_encoding": "utf-8"}
+
 
 
 @lru_cache
