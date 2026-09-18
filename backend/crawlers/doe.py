@@ -28,9 +28,8 @@ from models.circular import (
 )
 
 _LISTING_URLS = [
-    "https://doe.gov.in/circulars-and-orders",
-    "https://doe.gov.in/office-memoranda",
-    "https://doe.gov.in/orders",
+    "https://doe.gov.in/circulars",
+    "https://doe.gov.in/",
 ]
 
 
