@@ -31,8 +31,10 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 480
 
     # ─── Crawler ───
+    # Descriptive bot UA — identifies us honestly while avoiding WAF keyword triggers.
+    # PIB and similar sites using Akamai block generic "bot/crawler" strings.
     crawler_user_agent: str = (
-        "JanVaani/1.0 (+https://janvaani.in/about; government-circular-index)"
+        "Mozilla/5.0 (compatible; JanVaani/1.0; +https://janvaani.in/about)"
     )
     crawler_default_delay_seconds: int = 5
     crawler_max_page_size_mb: int = 10

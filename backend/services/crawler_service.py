@@ -282,11 +282,35 @@ async def ingest_single_url(
         source_reference_id=None,
     )
 
+    # Try to extract PRID from the URL for dedup purposes
+    from urllib.parse import urlparse, parse_qs
+    qs = parse_qs(urlparse(url).query)
+    prid_val = qs.get("PRID") or qs.get("prid")
+    if prid_val:
+        candidate.source_reference_id = f"PRID={prid_val[0]}"
+
     fetch_result = await adapter.fetch_detail(candidate)
     retrieved_at = fetch_result.fetched_at
 
     # ── Blocked fetch ──
     if fetch_result.blocked:
+        # Dedup blocked stubs by source_reference_id (PRID) — don't create
+        # a new stub every time the same URL is re-attempted while still blocked.
+        if candidate.source_reference_id:
+            existing_blocked = await db.circulars.find_one(
+                {
+                    "source.source_reference_id": candidate.source_reference_id,
+                    "processing.status": "manual_review_required",
+                },
+                projection={"_id": 1},
+            )
+            if existing_blocked:
+                existing = await db.circulars.find_one({"_id": existing_blocked["_id"]})
+                await adapter.close()
+                if existing:
+                    existing.pop("_id", None)
+                    return CanonicalCircular(**existing)
+
         circular = _build_blocked_circular(
             candidate,
             source_doc,
