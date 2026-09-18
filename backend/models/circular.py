@@ -12,7 +12,7 @@ routers/review.py — those belong to Team 3.
 """
 
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, Any
 from pydantic import BaseModel, Field
 from datetime import datetime
 from lib.dates import utcnow
@@ -46,15 +46,15 @@ class SourceInfo(BaseModel):
     source_domain: str
     source_url: str
     discovered_from_url: Optional[str] = None
-    official_document_url: str
+    official_document_url: Optional[str] = None
     source_reference_id: Optional[str] = None
 
 
 class Classification(BaseModel):
     government_level: str                          # "central" | "state"
     state: Optional[str] = None
-    department: str
-    document_type: str                             # press_release | order | circular | ...
+    department: Optional[str] = None
+    document_type: Optional[str] = None            # press_release | order | circular | ...
     category: Optional[str] = None
     sub_category: Optional[str] = None
     language: str = "en-IN"
@@ -84,8 +84,8 @@ class ContentSection(BaseModel):
 
 
 class Content(BaseModel):
-    original_text: str                             # Verbatim extracted text — required
-    clean_text: Optional[str] = None              # Nav/boilerplate stripped version
+    original_text: Optional[str] = None            # Verbatim extracted text
+    clean_text: Optional[str] = None               # Nav/boilerplate stripped version
     sections: list[ContentSection] = Field(default_factory=list)
 
 
@@ -94,16 +94,16 @@ class Attachment(BaseModel):
     type: str                                      # "pdf" | "doc" | "image" | ...
     title: Optional[str] = None
     file_size_bytes: Optional[int] = None
-    s3_key: Optional[str] = None                  # raw/{id}/v{n}/original.pdf
+    s3_key: Optional[str] = None                   # raw/{id}/v{n}/original.pdf
 
 
 class Provenance(BaseModel):
-    retrieved_at: datetime
+    retrieved_at: Optional[datetime] = None
     retrieval_timezone: str = "Asia/Kolkata"
-    http_status: Optional[int] = None             # null for pasted-text path
-    content_hash: str                              # "sha256:<hex>"
-    raw_html_s3_key: Optional[str] = None         # raw/{id}/v1/original.html
-    raw_pdf_s3_key: Optional[str] = None          # raw/{id}/v1/original.pdf
+    http_status: Optional[int] = None              # null for pasted-text path
+    content_hash: Optional[str] = None             # "sha256:<hex>"
+    raw_html_s3_key: Optional[str] = None          # raw/{id}/v1/original.html
+    raw_pdf_s3_key: Optional[str] = None           # raw/{id}/v1/original.pdf
     parser_name: Optional[str] = None
     parser_version: Optional[str] = None
     robots_checked: bool = False
@@ -112,7 +112,7 @@ class Provenance(BaseModel):
 
 class Extraction(BaseModel):
     status: str = "complete"                       # "complete" | "partial" | "failed"
-    method: str = "html"                           # "html" | "pdf" | "text"
+    method: Optional[str] = "html"                 # "html" | "pdf" | "text"
     confidence: Optional[float] = None
     warnings: list[str] = Field(default_factory=list)
     missing_fields: list[str] = Field(default_factory=list)
@@ -121,14 +121,22 @@ class Extraction(BaseModel):
 class Processing(BaseModel):
     """
     Processing state machine.
-
-    Person 1 writes only "extracted" or "manual_review_required".
-    All later statuses (translation_pending → under_review → approved →
-    audio_ready → published) belong to Team 3.
     """
     status: str = "extracted"
     published: bool = False
     translation_languages: list[str] = Field(default_factory=list)
+
+
+class SimplificationBlock(BaseModel):
+    """AI output fields added to the canonical schema."""
+    simplified_title: Optional[str] = None
+    summary: Optional[str] = None
+    simplified_text: Optional[str] = None
+    required_action: Optional[str] = None
+    who_is_affected: Optional[str] = None
+    important_dates: list[dict] = Field(default_factory=list)
+    amounts: list[dict] = Field(default_factory=list)
+    eligibility: list[str] = Field(default_factory=list)
 
 
 # ─── §4.2 CanonicalCircular — the full handoff document ──────────────────────
@@ -136,16 +144,6 @@ class Processing(BaseModel):
 class CanonicalCircular(BaseModel):
     """
     The document written to MongoDB's `circulars` collection after extraction.
-
-    Required fields (§4.4): id, source.source_id, source.source_name,
-    source.source_url, source.official_document_url, identity.title_original,
-    classification.government_level, classification.department,
-    classification.document_type, classification.language,
-    content.original_text (or an attachment PDF),
-    provenance.retrieved_at, provenance.content_hash,
-    processing.status, processing.published.
-
-    All other fields default to None/empty — never invent values.
     """
     schema_version: str = "1.0"
     id: str                                        # e.g. "circular_01JABC123"
@@ -159,7 +157,9 @@ class CanonicalCircular(BaseModel):
     provenance: Provenance
     extraction: Extraction = Field(default_factory=Extraction)
     processing: Processing = Field(default_factory=Processing)
-    source_specific_metadata: dict = Field(default_factory=dict)
+    
+    simplification: Optional[SimplificationBlock] = None
+    source_specific_metadata: dict[str, Any] = Field(default_factory=dict)
 
     # Mongo timestamps — managed by the service layer
     created_at: datetime = Field(default_factory=utcnow)
