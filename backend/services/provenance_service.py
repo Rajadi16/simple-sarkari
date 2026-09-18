@@ -93,25 +93,26 @@ async def store_raw(
     raw_bytes: bytes,
     extension: str,        # "html" or "pdf"
     version: int = 1,
-) -> str:
+) -> tuple[str, bool]:
     """
-    Persist the raw capture and return the storage key.
+    Persist the raw capture and return ``(key, is_s3_backed)``.
 
     Key format: raw/{circular_id}/v{version}/original.{extension}
 
     Tries S3 first; falls back to local disk if S3 is unavailable
-    (missing credentials or boto3 error).  The key is the same either way
-    so nothing downstream needs to branch on storage backend.
+    (missing credentials or boto3 error).  The key is the same either way,
+    but ``is_s3_backed`` tells callers whether the file actually landed on S3
+    so they can set ``provenance.is_s3_backed`` correctly.
     """
     key = f"raw/{circular_id}/v{version}/original.{extension}"
     content_type = "text/html" if extension == "html" else "application/pdf"
 
     if await _try_store_s3(key, raw_bytes, content_type):
-        return key
+        return key, True
 
     # Fall back to local disk
     _store_local(key, raw_bytes)
-    return key
+    return key, False
 
 
 async def _try_store_s3(key: str, body: bytes, content_type: str) -> bool:

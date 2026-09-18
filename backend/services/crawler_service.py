@@ -346,9 +346,10 @@ async def ingest_single_url(
     circular = await adapter.parse(candidate, fetch_result)
 
     # ── Store raw HTML ──
-    raw_key = await store_raw(circular.id, fetch_result.body, "html")
+    raw_key, s3_backed = await store_raw(circular.id, fetch_result.body, "html")
     # Patch provenance with the stored key
     circular.provenance.raw_html_s3_key = raw_key
+    circular.provenance.is_s3_backed = s3_backed
     circular.provenance.content_hash = (
         fetch_result.content_hash or compute_content_hash(fetch_result.body)
     )
@@ -358,7 +359,7 @@ async def ingest_single_url(
         if attachment.type == "pdf" and attachment.url and attachment.s3_key is None:
             pdf_result = await adapter.fetch(attachment.url)
             if not pdf_result.blocked and pdf_result.body:
-                pdf_key = await store_raw(circular.id, pdf_result.body, "pdf")
+                pdf_key, pdf_s3 = await store_raw(circular.id, pdf_result.body, "pdf")
                 attachment.s3_key = pdf_key
                 attachment.file_size_bytes = len(pdf_result.body)
                 # If we got a PDF and there's no HTML text, extract from PDF
@@ -368,6 +369,10 @@ async def ingest_single_url(
                     circular.content = build_content(pdf_data)
                     circular.extraction = build_extraction(pdf_data)
                     circular.provenance.raw_pdf_s3_key = pdf_key
+                if not s3_backed and pdf_s3:
+                    # HTML fell back to local but PDF made it to S3 — unlikely,
+                    # but keep is_s3_backed as the AND of all stores for safety
+                    circular.provenance.is_s3_backed = False
                 circular.processing.status = "extracted"
 
     # ── Save ──
@@ -391,6 +396,7 @@ async def run_crawl(
     source_id: str,
     max_pages: int = 5,
     max_documents: int = 50,
+    run_id: Optional[str] = None,
 ) -> CrawlRun:
     """
     Execute a full crawl run for the given source.
@@ -404,8 +410,20 @@ async def run_crawl(
     7. Return CrawlRun telemetry record
 
     Blocked fetches are recorded as manual_review_required — never retried.
+
+    If run_id is supplied (router pre-created the record), load and use that
+    record. Otherwise create a new one (direct / programmatic callers).
     """
-    run = await _create_crawl_run(db, source_id)
+    if run_id is not None:
+        doc = await db.crawl_runs.find_one({"_id": run_id})
+        if doc is None:
+            raise ValueError(f"Crawl run '{run_id}' not found in DB")
+        run = CrawlRun.model_validate(doc)
+        # Mark it running now that the worker has picked it up
+        run.status = "running"
+        await _update_crawl_run(db, run, status="running")
+    else:
+        run = await _create_crawl_run(db, source_id)
 
     try:
         # ── Load source ──
@@ -510,8 +528,9 @@ async def run_crawl(
                 continue
 
             # ── Store raw HTML ──
-            raw_key = await store_raw(circular.id, fetch_result.body, "html")
+            raw_key, s3_backed = await store_raw(circular.id, fetch_result.body, "html")
             circular.provenance.raw_html_s3_key = raw_key
+            circular.provenance.is_s3_backed = s3_backed
             circular.provenance.content_hash = (
                 fetch_result.content_hash or compute_content_hash(fetch_result.body)
             )
@@ -521,7 +540,7 @@ async def run_crawl(
                 if attachment.type == "pdf" and attachment.url and attachment.s3_key is None:
                     pdf_result = await adapter.fetch(attachment.url)
                     if not pdf_result.blocked and pdf_result.body:
-                        pdf_key = await store_raw(circular.id, pdf_result.body, "pdf")
+                        pdf_key, pdf_s3 = await store_raw(circular.id, pdf_result.body, "pdf")
                         attachment.s3_key = pdf_key
                         attachment.file_size_bytes = len(pdf_result.body)
                         if not circular.content.original_text:
@@ -532,6 +551,9 @@ async def run_crawl(
                             circular.content = build_content(pdf_data)
                             circular.extraction = build_extraction(pdf_data)
                             circular.provenance.raw_pdf_s3_key = pdf_key
+                        # is_s3_backed is True only if ALL stores succeeded on S3
+                        if not pdf_s3:
+                            circular.provenance.is_s3_backed = False
 
             # ── Save ──
             await save_circular(db, circular)

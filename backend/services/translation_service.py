@@ -108,8 +108,9 @@ async def create_translations(db: AsyncIOMotorDatabase, circular_id: str, langua
             prompt_version="v1"
         )
         trans_dict = translation.model_dump()
-        result = await db.translations.insert_one(trans_dict)
-        t_id = str(result.inserted_id)
+        trans_dict["_id"] = translation.id  # ensure Mongo uses our UUID as _id
+        await db.translations.insert_one(trans_dict)
+        t_id = translation.id
         translation_ids.append(t_id)
 
         # 4. Create Review record
@@ -119,7 +120,9 @@ async def create_translations(db: AsyncIOMotorDatabase, circular_id: str, langua
             language=lang,
             status="draft"
         )
-        await db.reviews.insert_one(review.model_dump())
+        review_dict = review.model_dump()
+        review_dict["_id"] = review.id  # ensure Mongo uses our UUID as _id
+        await db.reviews.insert_one(review_dict)
 
     # 5. Update circular processing_status
     await db.circulars.update_one(

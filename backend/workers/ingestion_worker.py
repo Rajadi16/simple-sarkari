@@ -169,10 +169,10 @@ async def process_crawl_run(
     Updates the crawl_runs record (managed inside crawler_service.run_crawl).
     """
     from services.crawler_service import run_crawl
-    # run_crawl handles its own DB record updates — nothing extra needed here
     await run_crawl(
         db=db,
         source_id=source_id,
         max_pages=max_pages,
         max_documents=max_documents,
+        run_id=run_id,
     )

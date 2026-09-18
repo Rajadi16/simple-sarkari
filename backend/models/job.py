@@ -2,6 +2,8 @@
 Job model — tracks background processing tasks.
 """
 
+import uuid
+
 from pydantic import BaseModel, Field
 from datetime import datetime
 from lib.dates import utcnow
@@ -9,7 +11,7 @@ from lib.dates import utcnow
 
 class Job(BaseModel):
     """A background processing job (crawl, extraction, translation, audio)."""
-    id: str = Field(default="")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     job_type: str  # crawl | extraction | translation | audio
     status: str = "pending"  # pending | running | completed | failed | cancelled
     document_id: str | None = None

@@ -105,6 +105,7 @@ class Provenance(BaseModel):
     content_hash: Optional[str] = None             # "sha256:<hex>"
     raw_html_s3_key: Optional[str] = None          # raw/{id}/v1/original.html
     raw_pdf_s3_key: Optional[str] = None           # raw/{id}/v1/original.pdf
+    is_s3_backed: bool = False                     # True only when raw files are on S3
     parser_name: Optional[str] = None
     parser_version: Optional[str] = None
     robots_checked: bool = False
@@ -133,10 +134,14 @@ class SimplificationBlock(BaseModel):
     simplified_title: Optional[str] = None
     summary: Optional[str] = None
     simplified_text: Optional[str] = None
-    key_points: list[str] = Field(default_factory=list)
-    action_items: list[str] = Field(default_factory=list)
-    deadlines: list[dict] = Field(default_factory=list)
-    target_audience: list[str] = Field(default_factory=list)
+    required_action: Optional[str] = None
+    who_is_affected: Optional[str] = None
+    important_dates: list[dict] = Field(default_factory=list)
+    amounts: list[dict] = Field(default_factory=list)
+    eligibility: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    source_excerpts: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
 
 
 # ─── §4.2 CanonicalCircular — the full handoff document ──────────────────────
