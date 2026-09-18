@@ -3,13 +3,14 @@ Review model — tracks human review decisions for translations.
 """
 
 from pydantic import BaseModel, Field
+import uuid
 from datetime import datetime
 from lib.dates import utcnow
 
 
 class Review(BaseModel):
     """A reviewer's assessment of a translation."""
-    id: str = Field(default="")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     circular_id: str
     translation_id: str
     language: str

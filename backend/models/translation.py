@@ -3,13 +3,14 @@ Translation model — one record per language per revision of a circular.
 """
 
 from pydantic import BaseModel, Field
+import uuid
 from datetime import datetime
 from lib.dates import utcnow
 
 
 class Translation(BaseModel):
     """AI-generated translation of a circular, subject to human review."""
-    id: str = Field(default="")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     circular_id: str
     language: str  # e.g. "hi-IN", "kn-IN", "en-IN"
     revision: int = 1

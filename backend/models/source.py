@@ -5,13 +5,13 @@ Person 1 (Aditya) — Ingestion & Source Verification
 """
 
 from pydantic import BaseModel, Field
+import uuid
 from datetime import datetime
 from lib.dates import utcnow
 
 
 class CrawlPolicy(BaseModel):
     """Crawl behaviour settings, nested inside Source."""
-    enabled: bool = True
     max_pages_per_run: int = 10
     request_delay_seconds: int = 5
     max_documents_per_run: int = 50
@@ -65,7 +65,7 @@ class Source(BaseModel):
             "allowed_document_types": self.allowed_document_types,
             "allowed_path_patterns": self.allowed_path_patterns,
             # Flatten crawl_policy so adapters can read stop_on_403 etc. directly
-            "enabled": self.crawl_policy.enabled,
+            "enabled": self.status == "active",
             "max_pages_per_run": self.crawl_policy.max_pages_per_run,
             "request_delay_seconds": self.crawl_policy.request_delay_seconds,
             "max_documents_per_run": self.crawl_policy.max_documents_per_run,
@@ -97,7 +97,6 @@ PIB_SOURCE = Source(
         "/Allrel.aspx",
     ],
     crawl_policy=CrawlPolicy(
-        enabled=True,
         max_pages_per_run=5,
         request_delay_seconds=5,
         max_documents_per_run=50,
@@ -119,7 +118,7 @@ class CrawlRunRequest(BaseModel):
 
 class CrawlRun(BaseModel):
     """Result / status record for a single crawler run."""
-    id: str = Field(default="")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     source_id: str
     status: str = "pending"   # pending | running | completed | failed
     pages_fetched: int = 0

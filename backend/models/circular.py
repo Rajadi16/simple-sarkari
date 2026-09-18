@@ -14,6 +14,7 @@ routers/review.py — those belong to Team 3.
 from __future__ import annotations
 from typing import Optional, Any
 from pydantic import BaseModel, Field
+import uuid
 from datetime import datetime
 from lib.dates import utcnow
 
@@ -132,11 +133,10 @@ class SimplificationBlock(BaseModel):
     simplified_title: Optional[str] = None
     summary: Optional[str] = None
     simplified_text: Optional[str] = None
-    required_action: Optional[str] = None
-    who_is_affected: Optional[str] = None
-    important_dates: list[dict] = Field(default_factory=list)
-    amounts: list[dict] = Field(default_factory=list)
-    eligibility: list[str] = Field(default_factory=list)
+    key_points: list[str] = Field(default_factory=list)
+    action_items: list[str] = Field(default_factory=list)
+    deadlines: list[dict] = Field(default_factory=list)
+    target_audience: list[str] = Field(default_factory=list)
 
 
 # ─── §4.2 CanonicalCircular — the full handoff document ──────────────────────
@@ -146,7 +146,7 @@ class CanonicalCircular(BaseModel):
     The document written to MongoDB's `circulars` collection after extraction.
     """
     schema_version: str = "1.0"
-    id: str                                        # e.g. "circular_01JABC123"
+    id: str = Field(default_factory=lambda: str(uuid.uuid4())) # e.g. "50c609f1-..."
 
     source: SourceInfo
     classification: Classification
@@ -166,15 +166,5 @@ class CanonicalCircular(BaseModel):
     updated_at: datetime = Field(default_factory=utcnow)
 
 
-# ─── Legacy flat model — kept for backward-compat with any Team 3 code ───────
-# DO NOT use for new ingestion code. Use CanonicalCircular above.
+# ─── Legacy flat model removed — Team 3 code must be updated to CanonicalCircular ───────
 
-class DocumentVersion(BaseModel):
-    """Immutable snapshot when a source document changes."""
-    id: str = Field(default="")
-    circular_id: str
-    version: int = 1
-    content_hash: str
-    raw_s3_key: str
-    extracted_text: Optional[str] = None
-    created_at: datetime = Field(default_factory=utcnow)
