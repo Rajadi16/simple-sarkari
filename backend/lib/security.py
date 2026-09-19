@@ -25,6 +25,9 @@ ALLOWED_DOMAINS: set[str] = {
     # Central govt
     "dopt.gov.in",
     "www.dopt.gov.in",
+    # PDF host and circular portal linked by the official DoPT homepage.
+    "doptcirculars.nic.in",
+    "documents.doptcirculars.nic.in",
     "egazette.gov.in",
     "www.egazette.gov.in",
     "doe.gov.in",
@@ -33,9 +36,11 @@ ALLOWED_DOMAINS: set[str] = {
     "www.india.gov.in",
     # Karnataka state
     "egazette.karnataka.gov.in",
+    "erajyapatra.karnataka.gov.in",
     "dpar.karnataka.gov.in",
     "finance.karnataka.gov.in",
     "itbt.karnataka.gov.in",
+    "eitbt.karnataka.gov.in",
 }
 
 # Private / reserved IP ranges blocked to prevent SSRF.

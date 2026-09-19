@@ -1,12 +1,12 @@
 """
-Karnataka IT-BT Department adapter — itbt.karnataka.gov.in
+Karnataka IT-BT Department adapter — eitbt.karnataka.gov.in
 
 Person 1 (Aditya) — Ingestion & Source Verification
 
 IT-BT (Information Technology & Biotechnology) publishes policies,
 notifications, and circulars related to the IT sector in Karnataka.
 
-SSL note: TLS SNI mismatch / NIC CA issue — verify=False applied.
+Uses the current EITBT policy endpoint with certificate verification enabled.
 Network errors are handled gracefully as manual_review_required.
 """
 
@@ -26,11 +26,7 @@ from models.circular import (
     Identity, Dates, Content, Attachment, Provenance, Extraction, Processing,
 )
 
-_LISTING_URLS = [
-    "https://itbt.karnataka.gov.in/page/Notifications-and-Circulars/en",
-    "https://itbt.karnataka.gov.in/page/Policies/en",
-    "https://itbt.karnataka.gov.in/",
-]
+_LISTING_URLS = ["https://eitbt.karnataka.gov.in/it/public/policy5/en"]
 
 
 def _clean(text: str) -> str:
@@ -56,22 +52,9 @@ class KarnatakaItbtAdapter(BaseCrawlerAdapter):
     PARSER_NAME = "karnataka_itbt_v1"
     PARSER_VERSION = "1.0.0"
 
-    async def _get_client(self):
-        import httpx
-        from config import get_settings
-        if self._client is None or self._client.is_closed:
-            settings = get_settings()
-            self._client = httpx.AsyncClient(
-                headers={"User-Agent": settings.crawler_user_agent},
-                timeout=httpx.Timeout(settings.crawler_request_timeout_seconds),
-                follow_redirects=True, max_redirects=5,
-                verify=False,  # NIC CA / TLS SNI issue
-            )
-        return self._client
-
     async def fetch_listing(self) -> list[CandidateDocument]:
         candidates: list[CandidateDocument] = []
-        seed_urls = self.source.get("seed_urls", _LISTING_URLS)
+        seed_urls = self.listing_urls(_LISTING_URLS)
         max_docs = self.source.get("max_documents_per_run", 50)
 
         for seed_url in seed_urls:
@@ -95,13 +78,10 @@ class KarnatakaItbtAdapter(BaseCrawlerAdapter):
             href = a["href"].strip()
             abs_url = urljoin(base_url, href)
 
-            # Only follow PDF or on-domain document links
-            is_pdf = href.lower().endswith(".pdf")
-            is_internal = urlparse(abs_url).hostname in (
-                "itbt.karnataka.gov.in", "www.itbt.karnataka.gov.in"
-            )
-            if not (is_pdf or ("storage" in href or "upload" in href)) and not is_internal:
+            # Require an allowed official host even for PDF links.
+            if not self.is_allowed_domain(abs_url) or urlparse(abs_url).scheme != "https":
                 continue
+            is_pdf = urlparse(abs_url).path.lower().endswith(".pdf")
             if not is_pdf and not ("storage" in href or "upload" in href):
                 continue
 
@@ -174,7 +154,7 @@ class KarnatakaItbtAdapter(BaseCrawlerAdapter):
             source=SourceInfo(
                 source_id="karnataka_itbt",
                 source_name="Karnataka IT-BT Department",
-                source_domain="itbt.karnataka.gov.in",
+                source_domain=urlparse(candidate.detail_url).hostname or "eitbt.karnataka.gov.in",
                 source_url=candidate.detail_url,
                 discovered_from_url=candidate.discovered_from_url,
                 official_document_url=candidate.detail_url,
@@ -199,6 +179,6 @@ class KarnatakaItbtAdapter(BaseCrawlerAdapter):
             ),
             extraction=extraction,
             processing=Processing(status="extracted", published=False),
-            source_specific_metadata={"ssl_note": "NIC_CA_verify_false"},
+            source_specific_metadata={},
             created_at=now, updated_at=now,
         )

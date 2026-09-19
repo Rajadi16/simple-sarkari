@@ -31,6 +31,7 @@ from config import get_settings
 from lib.security import validate_url, check_robots_txt
 from lib.dates import utcnow
 from models.circular import CandidateDocument, CanonicalCircular
+from crawlers.source_config import normalize_source_config
 
 
 # ─── ETag / Last-Modified cache ──────────────────────────────────────────────
@@ -66,6 +67,9 @@ class FetchResult:
                                           # "waf_block" | "robots_disallowed" |
                                           # "domain_not_allowed" | "network_error"
     not_modified: bool = False           # True → 304; use cached content
+
+    # Preserve the transport failure for diagnostics instead of guessing its cause.
+    error_detail: str | None = None
 
     fetched_at: datetime = field(default_factory=utcnow)
 
@@ -146,11 +150,26 @@ class BaseCrawlerAdapter(abc.ABC):
     PARSER_VERSION: str = "1.0.0"
 
     def __init__(self, source_config: dict) -> None:
-        self.source = source_config
+        self.source = normalize_source_config(source_config)
         self.settings = get_settings()
         self._client: httpx.AsyncClient | None = None
         # Per-instance delay tracking: domain → last fetch monotonic time
         self._last_fetch: dict[str, float] = {}
+        # Metadata only: never retain PDF/HTML bodies in telemetry.
+        self.fetch_events: list[dict] = []
+        self._halted: FetchResult | None = None
+
+    def listing_urls(self, defaults: list[str] | None = None) -> list[str]:
+        """Apply the configured page budget to every adapter's seed loop."""
+        limit = self.source.get("max_pages_per_run", 10)
+        if limit < 1:
+            raise ValueError("max_pages_per_run must be positive")
+        return self.source.get("seed_urls", defaults or [])[:limit]
+
+    def invalidate_fetch_cache(self) -> None:
+        """A later, explicit retry must not skip documents from a failed run."""
+        for event in self.fetch_events:
+            _etag_cache.pop(event["url"], None)
 
     # ─── HTTP client lifecycle ────────────────────────────────────────────
 
@@ -188,6 +207,27 @@ class BaseCrawlerAdapter(abc.ABC):
     # ─── Core fetch ───────────────────────────────────────────────────────
 
     async def fetch(self, url: str) -> FetchResult:
+        """Record fetch outcomes and stop this run after an access rejection."""
+        if self._halted is not None:
+            return FetchResult(
+                url=url, status_code=0, blocked=True,
+                block_reason="run_stopped",
+                error_detail=f"Stopped after {self._halted.block_reason} at {self._halted.url}",
+            )
+        result = await self._fetch(url)
+        self.fetch_events.append({
+            "url": url, "http_status": result.status_code,
+            "reason": result.block_reason, "error_detail": result.error_detail,
+            "blocked": result.blocked, "not_modified": result.not_modified,
+        })
+        if result.block_reason in {
+            "403_forbidden", "429_rate_limited", "captcha_challenge",
+            "login_redirect", "waf_block", "robots_disallowed",
+        }:
+            self._halted = result
+        return result
+
+    async def _fetch(self, url: str) -> FetchResult:
         """
         Fetch a single URL with all safety checks applied.
 
@@ -205,7 +245,7 @@ class BaseCrawlerAdapter(abc.ABC):
         except ValueError as exc:
             return FetchResult(url=url, status_code=0,
                                blocked=True, block_reason="domain_not_allowed",
-                               body=b"", content_hash=None)
+                               body=b"", content_hash=None, error_detail=str(exc))
 
         # 2. robots.txt check
         if self.source.get("respect_robots", True):
@@ -229,7 +269,7 @@ class BaseCrawlerAdapter(abc.ABC):
         client = await self._get_client()
         try:
             resp = await client.get(url, headers=headers)
-        except (httpx.RemoteProtocolError, httpx.TransportError) as exc:
+        except httpx.RemoteProtocolError:
             # Server closed the keep-alive connection — retry once with a fresh client
             await self.close()  # force client recreation
             client = await self._get_client()
@@ -238,22 +278,24 @@ class BaseCrawlerAdapter(abc.ABC):
             except Exception as exc2:
                 return FetchResult(url=url, status_code=0,
                                    blocked=True, block_reason="network_error",
-                                   body=b"", content_hash=None)
+                                   body=b"", content_hash=None,
+                                   error_detail=f"{type(exc2).__name__}: {exc2}")
         except Exception as exc:
             return FetchResult(url=url, status_code=0,
                                blocked=True, block_reason="network_error",
-                               body=b"", content_hash=None)
+                               body=b"", content_hash=None,
+                               error_detail=f"{type(exc).__name__}: {exc}")
         # 4b. 304 Not Modified
         if resp.status_code == 304:
             return FetchResult(url=url, status_code=304, not_modified=True,
                                body=b"", content_hash=None)
 
         # 5. Hard stop on explicit rejection codes — no retry
-        if resp.status_code == 403 and self.source.get("stop_on_403", True):
+        if resp.status_code == 403:
             return FetchResult(url=url, status_code=403,
                                blocked=True, block_reason="403_forbidden",
                                body=b"", content_hash=None)
-        if resp.status_code == 429 and self.source.get("stop_on_429", True):
+        if resp.status_code == 429:
             return FetchResult(url=url, status_code=429,
                                blocked=True, block_reason="429_rate_limited",
                                body=b"", content_hash=None)
@@ -264,6 +306,11 @@ class BaseCrawlerAdapter(abc.ABC):
             return FetchResult(url=url, status_code=resp.status_code,
                                blocked=True, block_reason=soft_block,
                                body=b"", content_hash=None)
+
+        if not 200 <= resp.status_code < 300:
+            return FetchResult(url=url, status_code=resp.status_code,
+                               blocked=True, block_reason="http_error",
+                               error_detail=f"HTTP {resp.status_code}")
 
         # 6. Size cap
         max_bytes = self.settings.crawler_max_page_size_mb * 1024 * 1024

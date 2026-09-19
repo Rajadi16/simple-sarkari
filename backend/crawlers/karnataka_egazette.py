@@ -1,13 +1,13 @@
 """
-Karnataka eGazette adapter — egazette.karnataka.gov.in
+Karnataka eGazette adapter — erajyapatra.karnataka.gov.in
 
 Person 1 (Aditya) — Ingestion & Source Verification
 
 Karnataka eGazette publishes state gazette notifications as PDFs.
 Listing pages show gazette part, date, and a PDF download link.
 
-SSL/DNS note: egazette.karnataka.gov.in uses NIC CA and has intermittent
-DNS issues. verify=False applied; network errors produce manual_review_required.
+Uses the official session-negotiating homepage and verified HTTPS. Direct PDF
+links are supported; form-only downloads require a separately verified parser.
 """
 
 from __future__ import annotations
@@ -26,10 +26,7 @@ from models.circular import (
     Identity, Dates, Content, Attachment, Provenance, Extraction, Processing,
 )
 
-_LISTING_URLS = [
-    "https://egazette.karnataka.gov.in/Gazettes.aspx",
-    "https://egazette.karnataka.gov.in/",
-]
+_LISTING_URLS = ["https://erajyapatra.karnataka.gov.in/"]
 
 
 def _clean(text: str) -> str:
@@ -42,23 +39,9 @@ class KarnatakaGazetteAdapter(BaseCrawlerAdapter):
     PARSER_NAME = "karnataka_egazette_v1"
     PARSER_VERSION = "1.0.0"
 
-    async def _get_client(self):
-        import httpx
-        from config import get_settings
-        if self._client is None or self._client.is_closed:
-            settings = get_settings()
-            self._client = httpx.AsyncClient(
-                headers={"User-Agent": settings.crawler_user_agent},
-                timeout=httpx.Timeout(settings.crawler_request_timeout_seconds),
-                follow_redirects=True,
-                max_redirects=5,
-                verify=False,  # NIC CA
-            )
-        return self._client
-
     async def fetch_listing(self) -> list[CandidateDocument]:
         candidates: list[CandidateDocument] = []
-        seed_urls = self.source.get("seed_urls", _LISTING_URLS)
+        seed_urls = self.listing_urls(_LISTING_URLS)
         max_docs = self.source.get("max_documents_per_run", 50)
 
         for seed_url in seed_urls:
@@ -174,7 +157,7 @@ class KarnatakaGazetteAdapter(BaseCrawlerAdapter):
             source=SourceInfo(
                 source_id="karnataka_egazette",
                 source_name="Karnataka eGazette",
-                source_domain="egazette.karnataka.gov.in",
+                source_domain=urlparse(candidate.detail_url).hostname or "erajyapatra.karnataka.gov.in",
                 source_url=candidate.detail_url,
                 discovered_from_url=candidate.discovered_from_url,
                 official_document_url=candidate.detail_url,
@@ -206,6 +189,6 @@ class KarnatakaGazetteAdapter(BaseCrawlerAdapter):
             ),
             extraction=extraction,
             processing=Processing(status="extracted", published=False),
-            source_specific_metadata={"ssl_note": "NIC_CA_verify_false"},
+            source_specific_metadata={},
             created_at=now, updated_at=now,
         )

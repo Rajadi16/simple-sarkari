@@ -6,6 +6,7 @@ All backend-only secrets live here. Never expose these to the frontend.
 """
 
 from pydantic_settings import BaseSettings
+from pydantic import Field
 from functools import lru_cache
 from pathlib import Path
 
@@ -44,6 +45,7 @@ class Settings(BaseSettings):
     crawler_max_page_size_mb: int = 10
     crawler_max_pdf_size_mb: int = 50
     crawler_request_timeout_seconds: int = 30
+    crawler_run_timeout_seconds: float = Field(default=120, gt=0)
 
     model_config = {"env_file": str(Path(__file__).parent / ".env"), "env_file_encoding": "utf-8"}
 

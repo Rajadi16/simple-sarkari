@@ -25,9 +25,10 @@ import hashlib
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
-from motor.motor_asyncio import AsyncIOMotorDatabase
+if TYPE_CHECKING:
+    from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from config import get_settings
 from lib.dates import utcnow

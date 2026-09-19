@@ -7,8 +7,7 @@ DoPT publishes orders, circulars, and OMs as PDF links on listing pages.
 The listing pages use a table structure with subject, date, and PDF download link.
 
 Seed URL example:
-  https://www.dopt.gov.in/orders-circulars
-  https://www.dopt.gov.in/circulars-orders
+  https://dopt.gov.in/
 """
 
 from __future__ import annotations
@@ -45,14 +44,12 @@ def _clean(text: str) -> str:
 
 # DoPT listing pages — subject + pdf link in table rows
 _LISTING_URLS = [
-    "https://www.dopt.gov.in/orders-circulars",
-    "https://www.dopt.gov.in/circulars-orders",
-    "https://www.dopt.gov.in/rti",
+    "https://dopt.gov.in/",
 ]
 
 # Patterns that identify a DoPT order/circular PDF link
 _DOC_LINK_PATTERNS = re.compile(
-    r"\.(pdf)$|/orders?|/circular|/notification|/om\b|/order|download",
+    r"\.pdf(?:[?#]|$)",
     re.I,
 )
 
@@ -67,7 +64,7 @@ class DoptAdapter(BaseCrawlerAdapter):
 
     async def fetch_listing(self) -> list[CandidateDocument]:
         candidates: list[CandidateDocument] = []
-        seed_urls = self.source.get("seed_urls", _LISTING_URLS)
+        seed_urls = self.listing_urls(_LISTING_URLS)
         max_docs = self.source.get("max_documents_per_run", 50)
 
         for seed_url in seed_urls:
@@ -100,7 +97,9 @@ class DoptAdapter(BaseCrawlerAdapter):
             for a in row.find_all("a", href=True):
                 href = a["href"].strip()
                 abs_href = urljoin(base_url, href)
-                if _DOC_LINK_PATTERNS.search(href):
+                if (_DOC_LINK_PATTERNS.search(href)
+                        and self.is_allowed_domain(abs_href)
+                        and urlparse(abs_href).scheme == "https"):
                     doc_link = abs_href
                     link_title = _clean(a.get_text())
                     break
@@ -123,7 +122,7 @@ class DoptAdapter(BaseCrawlerAdapter):
             # Date — scan cells for a date pattern
             date_text = self._find_date_in_row(cells)
 
-            is_pdf = doc_link.lower().endswith(".pdf")
+            is_pdf = urlparse(doc_link).path.lower().endswith(".pdf")
             doc_type = "circular"
             if "order" in doc_link.lower() or "order" in subject.lower():
                 doc_type = "order"
@@ -149,11 +148,11 @@ class DoptAdapter(BaseCrawlerAdapter):
         for a in soup.find_all("a", href=True):
             href = a["href"].strip()
             abs_href = urljoin(base_url, href)
-            if not abs_href.lower().endswith(".pdf"):
+            if not urlparse(abs_href).path.lower().endswith(".pdf"):
                 continue
             if abs_href in seen:
                 continue
-            if not self.is_allowed_domain(abs_href):
+            if not self.is_allowed_domain(abs_href) or urlparse(abs_href).scheme != "https":
                 continue
             seen.add(abs_href)
             title = _clean(a.get_text()) or "DoPT Document"
@@ -200,7 +199,7 @@ class DoptAdapter(BaseCrawlerAdapter):
         content_type = result.content_type or ""
 
         # ── PDF document ──
-        if "pdf" in content_type or candidate.detail_url.lower().endswith(".pdf"):
+        if "pdf" in content_type or urlparse(candidate.detail_url).path.lower().endswith(".pdf"):
             from services.extraction_service import extract_pdf, build_content, build_extraction
             ext_result = extract_pdf(result.body, candidate.detail_url)
             content = build_content(ext_result)
