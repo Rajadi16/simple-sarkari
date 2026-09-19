@@ -139,11 +139,32 @@ class KarnatakaGazetteAdapter(BaseCrawlerAdapter):
         circular_id = "circular_" + uuid.uuid4().hex
         now = utcnow()
 
-        from services.extraction_service import extract_pdf, build_content, build_extraction
-        ext = extract_pdf(result.body, candidate.detail_url)
+        ct = (result.content_type or "").lower()
+        is_pdf = "pdf" in ct or candidate.detail_url.lower().endswith(".pdf")
+
+        if is_pdf:
+            from services.extraction_service import extract_pdf, build_content, build_extraction
+            ext = extract_pdf(result.body, candidate.detail_url)
+            method = "pdf"
+        else:
+            # Received HTML — this is a navigation/session page, not a gazette document.
+            # Extract what text is available but mark as manual_review_required since
+            # actual gazette PDFs require ASP.NET postback interaction (form-only download).
+            from services.extraction_service import extract_html, build_content, build_extraction
+            ext = extract_html(result.body, candidate.detail_url)
+            method = "html"
+
         content = build_content(ext)
         extraction = build_extraction(ext)
-        extraction.method = "pdf"
+        extraction.method = method
+
+        # If we got HTML instead of a PDF, flag it — the postback form adapter
+        # is not yet implemented. Evidence is in data/browser-inspection/.
+        processing_status = "extracted" if is_pdf and content.original_text else "manual_review_required"
+        if not is_pdf:
+            extraction.warnings.append("gazette_postback_form_not_implemented")
+            extraction.missing_fields.append("content.original_text")
+
         title = ext.get("title") or candidate.title or "Karnataka Gazette Notification"
 
         date_text = candidate.published_date_text
@@ -151,6 +172,13 @@ class KarnatakaGazetteAdapter(BaseCrawlerAdapter):
         if date_text:
             dt = parse_indian_date(date_text)
             published_date = dt.strftime("%Y-%m-%d") if dt else None
+
+        attachments = []
+        if is_pdf:
+            attachments = [Attachment(
+                url=candidate.detail_url, type="pdf", title=title,
+                file_size_bytes=len(result.body) if result.body else None, s3_key=None,
+            )]
 
         return CanonicalCircular(
             id=circular_id,
@@ -176,10 +204,7 @@ class KarnatakaGazetteAdapter(BaseCrawlerAdapter):
             ),
             dates=Dates(published_date=published_date, date_text_original=date_text),
             content=content,
-            attachments=[Attachment(
-                url=candidate.detail_url, type="pdf", title=title,
-                file_size_bytes=len(result.body) if result.body else None, s3_key=None,
-            )],
+            attachments=attachments,
             provenance=Provenance(
                 retrieved_at=result.fetched_at, retrieval_timezone="Asia/Kolkata",
                 http_status=result.status_code,
@@ -188,7 +213,7 @@ class KarnatakaGazetteAdapter(BaseCrawlerAdapter):
                 robots_checked=self.source.get("respect_robots", True), terms_checked=True,
             ),
             extraction=extraction,
-            processing=Processing(status="extracted", published=False),
-            source_specific_metadata={},
+            processing=Processing(status=processing_status, published=False),
+            source_specific_metadata={"postback_form": not is_pdf},
             created_at=now, updated_at=now,
         )
