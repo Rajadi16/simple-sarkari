@@ -1,0 +1,216 @@
+{
+  "source": "karnataka_egazette",
+  "status": "captured",
+  "ingested": false,
+  "url": "https://erajyapatra.karnataka.gov.in/",
+  "preflight_http_status": 200,
+  "final_url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/default.aspx?AcceptsCookies=yes",
+  "rendered_http_status": null,
+  "html_file": "data\\browser-inspection\\karnataka_egazette.html",
+  "links": [
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/Default.aspx",
+      "text": "ಮುಖಪುಟ"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/Aboutus.aspx",
+      "text": "ನಮ್ಮ ಬಗ್ಗೆ"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/Digital.aspx",
+      "text": "ಡಿಜಿಟಲ್ ಡೈರೆಕ್ಟರಿ"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/Contact.aspx",
+      "text": "ನಮ್ಮನ್ನು ಸಂಪರ್ಕಿಸಿ"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/Help.aspx",
+      "text": "ಸಹಾಯ"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/DepartmentWise_Search.aspx?Category=15",
+      "text": "ಇಲಾಖೆವಾರು/ಸಂಸ್ಥೆವಾರು                      ರಾಜ್ಯಪತ್ರ ಹುಡುಕಿರಿ"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/RecentUploads.aspx?Category=1",
+      "text": "ಮಸೂದೆಗಳು ಮತ್ತು ವಿಧೇಯಕಗಳು"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/RecentUploads.aspx?Category=2",
+      "text": "ಚುನಾವಣೆಗಳು ಮತ್ತು ಉಪ-ಚುನಾವಣೆಗಳು"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/RecentUploads.aspx?Category=3",
+      "text": "ಭೂಸ್ವಾಧೀನ"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/RecentUploads.aspx?Category=4",
+      "text": "ಮಾಸ್ಟರ್ ಪ್ಲ್ಯಾನ್"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/RecentUploads.aspx?Category=5",
+      "text": "ನೇಮಕಾತಿ ಅಧಿಸೂಚನೆಗಳು"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/RecentUploads.aspx?Category=8",
+      "text": "ಸರ್ಕಾರದ ಅಧಿನಿಯಮಗಳು"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/RecentUploads.aspx?Category=9",
+      "text": "ಖಾಸಗಿ ಅಧಿಸೂಚನೆಗಳು"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/RecentUploads.aspx?Category=10",
+      "text": "ಉಚ್ಚನ್ಯಾಯಲಯಕ್ಕೆ ಸಂಬಂದಿಸಿದ                   ನೇಮಕ,ರಜೆ,ವರ್ಗಾವಣೆ ಇತ್ಯಾದಿ."
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/RecentUploads.aspx?Category=11",
+      "text": "ವಿಶೇಷ ರಾಜ್ಯಪತ್ರಗಳು"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/RecentUploads.aspx?Category=12",
+      "text": "ಗುಲ್ಬರ್ಗಾ ವಿಭಾಗ"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/RecentUploads.aspx?Category=13",
+      "text": "ಬೆಳಗಾವಿ ವಿಭಾಗ"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/RecentUploads.aspx?Category=14",
+      "text": "ಮೈಸೂರು ವಿಭಾಗ"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/StateGazette.aspx",
+      "text": "ರಾಜ್ಯಕ್ಕೆ ಅನ್ವಯವಾಗುವ ಕೇಂದ್ರದ               ವಿಧೇಯಕಗಳು ಮತ್ತು ಅಧಿನಿಯಮಗಳು"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/Default.aspx",
+      "text": "ಮುಖಪುಟ"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/Aboutus.aspx",
+      "text": "ನಮ್ಮ ಬಗ್ಗೆ"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/Searchmenu2.aspx",
+      "text": "ರಾಜ್ಯಪತ್ರ ಹುಡುಕಿ"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/Digital.aspx",
+      "text": "ಡಿಜಿಟಲ್ ಡೈರೆಕ್ಟರಿ"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/Circulars.aspx",
+      "text": "ಸುತ್ತೋಲೆಗಳು"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/Disclaimer.aspx",
+      "text": "ಹಕ್ಕುತ್ಯಾಗ(ಡಿಸ್ಕ್ಲೈಮರ್)"
+    },
+    {
+      "url": "https://erajyapatra.karnataka.gov.in/(S(fjwr0dbfi5bc3uhnsbipk2x1))/Contact.aspx",
+      "text": "ನಮ್ಮನ್ನು ಸಂಪರ್ಕಿಸಿ"
+    }
+  ],
+  "controls": [
+    {
+      "tag": "select",
+      "id": "ddlkeyword",
+      "name": "ddlkeyword",
+      "type": "select-one",
+      "text": " Select Keyword\n ಕೇಂದ್ರದ ವಿಧೇಯಕಗಳು\n ಖಾಸಗಿ ಅಧಿಸೂಚನೆಗಳು\n ಗುಲ್ಬರ್ಗಾ ವಿಭಾಗ\n ಚುನಾವಣೆ\n ಜೇಷ್ಠತಾ ಪಟ್ಟಿಗಳು\n ನ್ಯಾಯಾಲಯದ ಆದೇಶಗಳು\n ನೇಮಕಾತಿ ನಿಯಮಗಳು\n ನೇಮಕಾತಿಗಳು\n ಬೆಳಗಾವಿ ವಿಭಾಗ\n ಭೂಸ್ವಾಧೀನ\n ಮಸೂದೆಗಳು\n ಮುಂಬಡ್ತಿಗಳು\n ಮೈಸೂರು ವಿಭಾಗ\n ರಜೆಗಳು\n ವಿಧೇಯಕಗಳು\n ವರ್ಗಾವಣೆಗಳು\n ವರದಿಗಳು\n ಸ್ಥಿರಾಸ್ತಿಗಳ ಮಾರುಕಟ್ಟೆ ಬೆಲೆ\n ಸರ್ಕಾರಿ ಆದೇಶಗಳು\n ಸುತ್ತೋಲೆಗಳು\n ಹೆಸರು ಬದಲಾವಣೆ"
+    },
+    {
+      "tag": "input",
+      "id": "ImageButton2",
+      "name": "ImageButton2",
+      "type": "image",
+      "text": ""
+    },
+    {
+      "tag": "input",
+      "id": "rptmmain_imgdown_0",
+      "name": "rptmmain$ctl01$imgdown",
+      "type": "image",
+      "text": ""
+    },
+    {
+      "tag": "input",
+      "id": "rptmmain_imgdown_1",
+      "name": "rptmmain$ctl02$imgdown",
+      "type": "image",
+      "text": ""
+    },
+    {
+      "tag": "input",
+      "id": "rptmmain_imgdown_2",
+      "name": "rptmmain$ctl03$imgdown",
+      "type": "image",
+      "text": ""
+    },
+    {
+      "tag": "input",
+      "id": "rptmmain_imgdown_3",
+      "name": "rptmmain$ctl04$imgdown",
+      "type": "image",
+      "text": ""
+    },
+    {
+      "tag": "input",
+      "id": "rptmmain_imgdown_4",
+      "name": "rptmmain$ctl05$imgdown",
+      "type": "image",
+      "text": ""
+    },
+    {
+      "tag": "input",
+      "id": "rptmain1_imgdown1_0",
+      "name": "rptmain1$ctl01$imgdown1",
+      "type": "image",
+      "text": ""
+    },
+    {
+      "tag": "input",
+      "id": "rptmain1_imgdown1_1",
+      "name": "rptmain1$ctl02$imgdown1",
+      "type": "image",
+      "text": ""
+    },
+    {
+      "tag": "input",
+      "id": "rptmain1_imgdown1_2",
+      "name": "rptmain1$ctl03$imgdown1",
+      "type": "image",
+      "text": ""
+    },
+    {
+      "tag": "input",
+      "id": "rptmain1_imgdown1_3",
+      "name": "rptmain1$ctl04$imgdown1",
+      "type": "image",
+      "text": ""
+    },
+    {
+      "tag": "input",
+      "id": "rptmain1_imgdown1_4",
+      "name": "rptmain1$ctl05$imgdown1",
+      "type": "image",
+      "text": ""
+    },
+    {
+      "tag": "input",
+      "id": "imgdigital_logo",
+      "name": "imgdigital_logo",
+      "type": "image",
+      "text": ""
+    },
+    {
+      "tag": "input",
+      "id": "ImageButton1",
+      "name": "ImageButton1",
+      "type": "image",
+      "text": ""
+    }
+  ]
+}

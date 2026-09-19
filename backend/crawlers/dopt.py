@@ -60,6 +60,21 @@ class DoptAdapter(BaseCrawlerAdapter):
     PARSER_NAME = "dopt_circular_v1"
     PARSER_VERSION = "1.0.0"
 
+    async def _get_client(self):
+        """Override to use verify=False — NIC CA not in Python's trust store.
+        Applies to both dopt.gov.in and documents.doptcirculars.nic.in."""
+        import httpx
+        if self._client is None or self._client.is_closed:
+            settings = self.settings
+            self._client = httpx.AsyncClient(
+                headers={"User-Agent": settings.crawler_user_agent},
+                timeout=httpx.Timeout(settings.crawler_request_timeout_seconds),
+                follow_redirects=True,
+                max_redirects=5,
+                verify=False,  # NIC CA
+            )
+        return self._client
+
     # ─── Listing ─────────────────────────────────────────────────────────
 
     async def fetch_listing(self) -> list[CandidateDocument]:
