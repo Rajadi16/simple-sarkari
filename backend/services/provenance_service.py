@@ -100,10 +100,8 @@ async def store_raw(
 
     Key format: raw/{circular_id}/v{version}/original.{extension}
 
-    Tries S3 first; falls back to local disk if S3 is unavailable
-    (missing credentials or boto3 error).  The key is the same either way,
-    but ``is_s3_backed`` tells callers whether the file actually landed on S3
-    so they can set ``provenance.is_s3_backed`` correctly.
+    Tries S3 first; falls back to local disk if S3 is unavailable.
+    The key is always set (§4.2 requires raw_html_s3_key / raw_pdf_s3_key).
     """
     key = f"raw/{circular_id}/v{version}/original.{extension}"
     content_type = "text/html" if extension == "html" else "application/pdf"

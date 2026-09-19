@@ -257,7 +257,7 @@ async def _store_primary_capture(circular: CanonicalCircular, result) -> None:
     """Store fetched PDFs once, with the right extension and provenance field."""
     is_pdf = result.body.startswith(b"%PDF-") or "pdf" in (result.content_type or "").lower()
     extension = "pdf" if is_pdf else "html"
-    key, s3_backed = await store_raw(circular.id, result.body, extension)
+    key, _s3_backed = await store_raw(circular.id, result.body, extension)
     if is_pdf:
         circular.provenance.raw_pdf_s3_key = key
         for attachment in circular.attachments:
@@ -266,7 +266,6 @@ async def _store_primary_capture(circular: CanonicalCircular, result) -> None:
                 attachment.file_size_bytes = len(result.body)
     else:
         circular.provenance.raw_html_s3_key = key
-    circular.provenance.is_s3_backed = s3_backed
     circular.provenance.content_hash = result.content_hash or compute_content_hash(result.body)
 
 
@@ -400,8 +399,6 @@ async def ingest_single_url(
                             circular.content = build_content(pdf_data)
                             circular.extraction = build_extraction(pdf_data)
                             circular.provenance.raw_pdf_s3_key = pdf_key
-                        if not pdf_s3:
-                            circular.provenance.is_s3_backed = False
                         circular.processing.status = "extracted"
 
             # ── Save ──
@@ -617,9 +614,6 @@ async def _crawl_documents(db, run: CrawlRun, source_doc: dict, adapter) -> None
                         circular.content = build_content(pdf_data)
                         circular.extraction = build_extraction(pdf_data)
                         circular.provenance.raw_pdf_s3_key = pdf_key
-                    # is_s3_backed is True only if ALL stores succeeded on S3
-                    if not pdf_s3:
-                        circular.provenance.is_s3_backed = False
 
         # ── Save ──
         _require_extracted_text(circular)

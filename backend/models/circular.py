@@ -54,8 +54,8 @@ class SourceInfo(BaseModel):
 class Classification(BaseModel):
     government_level: str                          # "central" | "state"
     state: Optional[str] = None
-    department: Optional[str] = None
-    document_type: Optional[str] = None            # press_release | order | circular | ...
+    department: str = "Unknown"                    # required per §4.4
+    document_type: str = "circular"               # required per §4.4
     category: Optional[str] = None
     sub_category: Optional[str] = None
     language: str = "en-IN"
@@ -85,7 +85,7 @@ class ContentSection(BaseModel):
 
 
 class Content(BaseModel):
-    original_text: Optional[str] = None            # Verbatim extracted text
+    original_text: str = ""                        # required per §4.4 — never null
     clean_text: Optional[str] = None               # Nav/boilerplate stripped version
     sections: list[ContentSection] = Field(default_factory=list)
 
@@ -105,7 +105,6 @@ class Provenance(BaseModel):
     content_hash: Optional[str] = None             # "sha256:<hex>"
     raw_html_s3_key: Optional[str] = None          # raw/{id}/v1/original.html
     raw_pdf_s3_key: Optional[str] = None           # raw/{id}/v1/original.pdf
-    is_s3_backed: bool = False                     # True only when raw files are on S3
     parser_name: Optional[str] = None
     parser_version: Optional[str] = None
     robots_checked: bool = False
