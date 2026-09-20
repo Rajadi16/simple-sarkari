@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from config import get_settings
-from lib.aws import get_bedrock_client
+from lib.aws import get_bedrock_client, get_sagemaker_client
 from models.circular import CanonicalCircular, SimplificationBlock
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 
 class AIExtractionResult(BaseModel):
     """Validated output from Bedrock simplification."""
-    urgency_level: str = Field(default="low")
     simplified_title: str
     summary: str
     simplified_text: str
@@ -53,7 +52,6 @@ Rules you MUST follow:
 - Return valid JSON only. Do not wrap in markdown blocks like ```json.
 
 JSON Structure:
-- urgency_level (string): Must be "high", "medium", or "low". Use "high" ONLY if the document contains an impending deadline, a severe penalty for inaction, or an immediate public safety warning. Use "medium" for general required actions without immediate deadlines. Use "low" for informational press releases or routine updates.
 - simplified_title (string): A short, clear title a citizen would understand.
 - summary (string): A 2-3 sentence overview of the document at an 8th-grade level.
 - simplified_text (string): The full explanation, broken down simply without jargon.
@@ -119,6 +117,45 @@ async def simplify_document(original_text: str) -> AIExtractionResult:
         raise
 
 
+async def classify_urgency_sagemaker(text: str) -> str:
+    """
+    Call SageMaker endpoint to classify the urgency of the document.
+    """
+    settings = get_settings()
+    if not settings.sagemaker_endpoint_name:
+        logger.warning("No SageMaker endpoint configured. Defaulting urgency to 'low'.")
+        return "low"
+        
+    client = get_sagemaker_client()
+    
+    # Use the first 2000 chars to avoid payload size limits and speed up classification
+    truncated_text = text[:2000]
+    payload = {"inputs": truncated_text}
+    
+    try:
+        response = await asyncio.to_thread(
+            client.invoke_endpoint,
+            EndpointName=settings.sagemaker_endpoint_name,
+            ContentType="application/json",
+            Body=json.dumps(payload)
+        )
+        
+        response_body = response['Body'].read().decode('utf-8')
+        result = json.loads(response_body)
+        
+        # Expected format from standard HuggingFace Inference Endpoints: [{"label": "high", "score": 0.9}]
+        if isinstance(result, list) and len(result) > 0 and "label" in result[0]:
+            label = result[0]["label"].lower()
+            if label in ["high", "medium", "low"]:
+                return label
+        
+        logger.warning(f"Unexpected SageMaker response format: {result}")
+        return "low"
+    except Exception as e:
+        logger.error(f"Failed to classify urgency via SageMaker: {str(e)}")
+        return "low"
+
+
 async def process_simplification(db: AsyncIOMotorDatabase, circular_id: str) -> None:
     """
     Full simplification pipeline for a circular.
@@ -135,12 +172,15 @@ async def process_simplification(db: AsyncIOMotorDatabase, circular_id: str) -> 
     if not text_to_simplify:
         raise ValueError(f"Circular {circular_id} has no extracted text")
 
-    # 2. Call simplify_document
-    result = await simplify_document(text_to_simplify)
+    # 2. Call simplify_document & SageMaker concurrently
+    result, urgency = await asyncio.gather(
+        simplify_document(text_to_simplify),
+        classify_urgency_sagemaker(text_to_simplify)
+    )
     
     # 3. Create SimplificationBlock
     simplification = SimplificationBlock(
-        urgency_level=result.urgency_level,
+        urgency_level=urgency,
         simplified_title=result.simplified_title,
         summary=result.summary,
         simplified_text=result.simplified_text,
