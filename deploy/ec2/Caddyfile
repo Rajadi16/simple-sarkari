@@ -1,0 +1,12 @@
+# Replace :80 with your API/site domain to enable automatic HTTPS.
+:80 {
+    handle /api/* {
+        reverse_proxy 127.0.0.1:8000
+    }
+
+    handle {
+        root * /var/www/janvaani
+        try_files {path} /index.html
+        file_server
+    }
+}

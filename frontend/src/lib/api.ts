@@ -1,7 +1,7 @@
 /**
  * JanVaani API client — all backend communication goes through here.
  *
- * Uses relative /api paths so the Vite proxy handles routing to FastAPI.
+ * Defaults to the local proxy; VITE_API_BASE_URL selects a deployed API.
  * Never calls AWS services directly.
  */
 
@@ -20,7 +20,7 @@ import type {
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-const BASE = "/api";
+const BASE = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/+$/, "");
 
 function authHeaders(): Record<string, string> {
   const token = localStorage.getItem("reviewer_token");

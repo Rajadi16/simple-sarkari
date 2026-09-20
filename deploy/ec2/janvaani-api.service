@@ -1,0 +1,17 @@
+[Unit]
+Description=JanVaani FastAPI API
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/simple-sarkari-/backend
+EnvironmentFile=/home/ubuntu/simple-sarkari-/backend/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ubuntu/simple-sarkari-/backend/.venv/bin/uvicorn server:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=always
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

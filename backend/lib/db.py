@@ -45,18 +45,55 @@ async def _create_indexes() -> None:
     """
     db = get_db()
 
-    # circulars
-    await db.circulars.create_index("content_hash", unique=True, sparse=True)
-    await db.circulars.create_index([("source_id", 1), ("published_at", -1)])
-    await db.circulars.create_index([("published", 1), ("published_at", -1)])
-    await db.circulars.create_index([("department", 1), ("published_at", -1)])
+    # circulars: migrate legacy flat-schema indexes before creating canonical ones.
+    existing_indexes = await db.circulars.list_indexes().to_list(length=None)
+    legacy_hash = next(
+        (index for index in existing_indexes if index.get("name") == "provenance.content_hash_1"),
+        None,
+    )
+    if legacy_hash and not legacy_hash.get("unique", False):
+        await db.circulars.drop_index("provenance.content_hash_1")
     await db.circulars.create_index(
-        [("government_level", 1), ("state", 1), ("published_at", -1)]
+        "provenance.content_hash",
+        name="provenance_content_hash_unique",
+        unique=True,
+        sparse=True,
+    )
+
+    for index_name in ("circulars_text_search",):
+        if any(index.get("name") == index_name for index in existing_indexes):
+            await db.circulars.drop_index(index_name)
+    await db.circulars.create_index(
+        [
+            ("identity.title_original", "text"),
+            ("identity.subject_original", "text"),
+            ("classification.department", "text"),
+            ("content.original_text", "text"),
+            ("content.clean_text", "text"),
+            ("simplification.simplified_title", "text"),
+            ("simplification.summary", "text"),
+            ("simplification.simplified_text", "text"),
+            ("simplification.key_points", "text"),
+        ],
+        name="circulars_text_search",
+        language_override="text_language",
+    )
+
+    await db.circulars.create_index(
+        [("source.source_id", 1), ("dates.published_date", -1)]
     )
     await db.circulars.create_index(
-        [("title", "text"), ("subject", "text"), ("department", "text"),
-         ("original_text", "text"), ("simplified_text", "text")],
-        name="circulars_text_search",
+        [("processing.published", 1), ("dates.published_date", -1)]
+    )
+    await db.circulars.create_index(
+        [("classification.department", 1), ("dates.published_date", -1)]
+    )
+    await db.circulars.create_index(
+        [
+            ("classification.government_level", 1),
+            ("classification.state", 1),
+            ("dates.published_date", -1),
+        ]
     )
 
     # translations
@@ -85,7 +122,6 @@ async def _create_indexes() -> None:
     await db.crawl_runs.create_index("status")
 
     # circulars — Person 1 specific indexes (nested CanonicalCircular fields)
-    await db.circulars.create_index("provenance.content_hash", sparse=True)
     await db.circulars.create_index("source.source_id")
     await db.circulars.create_index("source.source_reference_id", sparse=True)
     await db.circulars.create_index("processing.status")

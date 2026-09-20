@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     # ─── Application ───
     app_env: str = "development"
     app_debug: bool = True
+    cors_origins: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+    ]
 
     # ─── MongoDB ───
     mongo_url: str = "mongodb://localhost:27017"
