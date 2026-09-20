@@ -13,6 +13,7 @@ from config import get_settings
 _s3_client = None
 _bedrock_client = None
 _polly_client = None
+_ses_client = None
 
 
 def _get_boto3_kwargs(settings):
@@ -52,6 +53,17 @@ def get_polly_client():
         settings = get_settings()
         _polly_client = boto3.client("polly", region_name=settings.polly_region, **_get_boto3_kwargs(settings))
     return _polly_client
+
+
+def get_ses_client():
+    """Returns a boto3 SES client."""
+    global _ses_client
+    if _ses_client is None:
+        settings = get_settings()
+        if not settings.aws_enabled:
+            raise RuntimeError("AWS integration is disabled")
+        _ses_client = boto3.client("ses", region_name=settings.aws_region, **_get_boto3_kwargs(settings))
+    return _ses_client
 
 
 async def upload_to_s3(key: str, body: bytes, content_type: str = "application/octet-stream") -> str:

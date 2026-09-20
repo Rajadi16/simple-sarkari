@@ -125,11 +125,13 @@ class Processing(BaseModel):
     """
     status: str = "extracted"
     published: bool = False
+    email_dispatched: bool = False
     translation_languages: list[str] = Field(default_factory=list)
 
 
 class SimplificationBlock(BaseModel):
     """AI output fields added to the canonical schema."""
+    urgency_level: str = Field(default="low", description="low, medium, or high")
     simplified_title: Optional[str] = None
     summary: Optional[str] = None
     simplified_text: Optional[str] = None

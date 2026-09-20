@@ -2,6 +2,18 @@
 
 > Simplify, translate, and narrate Indian government circulars so every citizen can understand them.
 
+## Key Features
+
+JanVaani is designed to bridge the gap between complex government documentation and the everyday citizen.
+
+- **Automated Ingestion Pipeline**: Dedicated crawlers fetch real-time circulars, orders, and press releases from central and state government portals (e.g., PIB, DoPT, e-Gazette).
+- **AI-Powered Simplification**: Uses AWS Bedrock AI to extract dense bureaucratic language and transform it into plain, easy-to-understand summaries.
+- **Multilingual Translation**: Instantly translates simplified circulars into multiple regional languages (Hindi, Kannada, etc.) to ensure accessibility across India.
+- **Audio Narration**: Integration with AWS Polly provides high-quality text-to-speech audio versions of circulars, aiding those with visual impairments or lower literacy.
+- **Human-in-the-Loop Review System**: An admin dashboard allows human editors to review, refine, and approve AI-generated translations and simplifications before they go public.
+- **Action-Oriented Insights**: Automatically extracts and highlights critical information like deadlines, required actions, and eligibility criteria so citizens know exactly what to do.
+- **Robust Provenance Tracking**: Maintains cryptographic hashes and S3-backed copies of all original source documents, ensuring transparency and verifiable truth.
+
 ## Architecture
 
 ```

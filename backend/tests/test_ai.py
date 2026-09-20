@@ -17,6 +17,7 @@ async def test_simplify_document():
     """
 
     mock_ai_response = {
+        "urgency_level": "medium",
         "summary": "Dearness Allowance increased from 42% to 46% for central government employees.",
         "who_is_affected": "Central Government employees.",
         "required_action": "No action required.",

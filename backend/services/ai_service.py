@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 class AIExtractionResult(BaseModel):
     """Validated output from Bedrock simplification."""
+    urgency_level: str = Field(default="low")
     simplified_title: str
     summary: str
     simplified_text: str
@@ -52,6 +53,7 @@ Rules you MUST follow:
 - Return valid JSON only. Do not wrap in markdown blocks like ```json.
 
 JSON Structure:
+- urgency_level (string): Must be "high", "medium", or "low". Use "high" ONLY if the document contains an impending deadline, a severe penalty for inaction, or an immediate public safety warning. Use "medium" for general required actions without immediate deadlines. Use "low" for informational press releases or routine updates.
 - simplified_title (string): A short, clear title a citizen would understand.
 - summary (string): A 2-3 sentence overview of the document at an 8th-grade level.
 - simplified_text (string): The full explanation, broken down simply without jargon.
@@ -138,6 +140,7 @@ async def process_simplification(db: AsyncIOMotorDatabase, circular_id: str) -> 
     
     # 3. Create SimplificationBlock
     simplification = SimplificationBlock(
+        urgency_level=result.urgency_level,
         simplified_title=result.simplified_title,
         summary=result.summary,
         simplified_text=result.simplified_text,

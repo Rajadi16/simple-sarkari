@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     s3_bucket: str = "janvaani-dev"
     bedrock_model_id: str = "anthropic.claude-3-sonnet-20240229-v1:0"
     polly_region: str = "ap-south-1"
+    ses_sender_email: str = "alerts@janvaani.in"
 
     # ─── Auth ───
     reviewer_token: str = "change-me-to-a-strong-secret"
