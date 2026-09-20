@@ -5,7 +5,7 @@ import traceback
 from botocore.exceptions import ClientError
 
 from config import get_settings
-from lib.db import get_db, connect_to_mongo, close_mongo_connection
+from lib.db import connect_db, close_db
 from lib.aws import get_sqs_client
 from workers.ingestion_worker import process_url_ingestion, process_text_ingestion, process_crawl_run
 
@@ -53,7 +53,7 @@ async def run_worker():
         logger.error("SQS Queue URL not configured (aws_sqs_queue_url)")
         return
         
-    await connect_to_mongo()
+    await connect_db()
     
     # get_db is an async generator, we can get the db object using anext or direct logic
     # Actually get_db yields db.
@@ -103,6 +103,8 @@ async def run_worker():
         except Exception as e:
             logger.error(f"Unexpected error in polling loop: {e}")
             await asyncio.sleep(5)
+
+    await close_db()
 
 if __name__ == "__main__":
     try:
