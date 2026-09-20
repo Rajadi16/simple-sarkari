@@ -9,6 +9,8 @@ import CircularPage from "@/pages/CircularPage";
 import AdminDashboard from "@/pages/AdminDashboard";
 import ReviewPage from "@/pages/ReviewPage";
 import IngestPage from "@/pages/IngestPage";
+import AdminAccessPage from "@/pages/AdminAccessPage";
+import AdminGate from "@/components/AdminGate";
 
 export default function App() {
   return (
@@ -19,10 +21,12 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/circular/:id" element={<CircularPage />} />
 
-          {/* Admin */}
-          <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="/admin/reviews" element={<ReviewPage />} />
-          <Route path="/admin/ingest" element={<IngestPage />} />
+          <Route path="/admin/access" element={<AdminAccessPage />} />
+          <Route element={<AdminGate />}>
+            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/admin/reviews" element={<ReviewPage />} />
+            <Route path="/admin/ingest" element={<IngestPage />} />
+          </Route>
         </Route>
       </Routes>
     </BrowserRouter>

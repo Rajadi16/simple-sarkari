@@ -5,16 +5,24 @@
 // ─── Source ──────────────────────────────────────────────────────────────────
 
 export interface Source {
-  id: string;
+  source_id: string;
   name: string;
   base_domains: string[];
   seed_urls: string[];
   adapter: string;
   government_level: "central" | "state";
   state: string | null;
-  allowed_content_types: string[];
-  enabled: boolean;
-  crawl_interval_minutes: number;
+  allowed_document_types: string[];
+  allowed_path_patterns: string[];
+  crawl_policy: {
+    max_pages_per_run: number;
+    request_delay_seconds: number;
+    max_documents_per_run: number;
+    respect_robots: boolean;
+    stop_on_403: boolean;
+    stop_on_429: boolean;
+  };
+  status: "active" | "paused" | "disabled" | string;
   request_delay_seconds: number;
   max_pages_per_run: number;
   max_documents_per_run: number;
@@ -40,31 +48,49 @@ export interface CrawlRun {
 
 export interface Circular {
   id: string;
-  source_id: string;
-  source_url: string;
-  title: string;
-  subject: string | null;
+  source_id: string | null;
+  source_name: string | null;
+  source_url: string | null;
+  official_document_url: string | null;
+  title: string | null;
+  document_number: string | null;
   department: string | null;
   document_type: string | null;
-  government_level: string;
+  government_level: "central" | "state" | string | null;
   state: string | null;
-  original_language: string;
-  original_text: string | null;
+  language: string | null;
+  original_text: string;
   simplified_title: string | null;
   simplified_text: string | null;
   summary: string | null;
   who_is_affected: string | null;
   required_action: string | null;
+  key_points?: string[];
+  action_items?: string[];
   important_dates: Record<string, unknown>[];
   amounts: Record<string, unknown>[];
   eligibility: string[];
   warnings: string[];
   keywords: string[];
-  processing_status: string;
+  effective_from: string | null;
+  effective_until: string | null;
+  published_date: string | null;
+  last_updated?: string | null;
+  retrieved_at?: string | null;
+  review_date?: string | null;
+  source_excerpts?: string[];
+  processing_status?: string;
   published: boolean;
-  published_at: string | null;
-  created_at: string;
-  updated_at: string;
+  translation_languages: string[];
+  audio_available?: boolean;
+  attachments?: Attachment[];
+}
+
+export interface Attachment {
+  url: string;
+  type: string;
+  title: string | null;
+  file_size_bytes: number | null;
 }
 
 // ─── Translation ─────────────────────────────────────────────────────────────
@@ -99,6 +125,25 @@ export interface Review {
   reviewed_at: string | null;
   created_at: string;
   updated_at: string;
+  circular?: ReviewCircular;
+  translation?: Translation | null;
+}
+
+export interface ReviewCircular {
+  id: string;
+  source?: { source_name?: string | null; official_document_url?: string | null };
+  identity?: { title_original?: string | null };
+  classification?: { department?: string | null; language?: string | null };
+  dates?: { published_date?: string | null };
+  content?: { original_text?: string | null; clean_text?: string | null; sections?: ContentSection[] };
+  simplification?: { important_dates?: Record<string, unknown>[]; warnings?: string[]; source_excerpts?: string[] };
+}
+
+export interface ContentSection {
+  heading: string | null;
+  text: string;
+  page_start?: number | null;
+  page_end?: number | null;
 }
 
 // ─── Job ─────────────────────────────────────────────────────────────────────
@@ -136,11 +181,22 @@ export interface PaginatedResponse<T> {
 }
 
 export interface CatalogueFilters {
-  sources: string[];
+  sources: { source_id: string; name: string }[];
   departments: string[];
   states: string[];
   document_types: string[];
   languages: string[];
+}
+
+export interface IngestionJob {
+  job_id: string;
+  status: "pending" | "running" | "completed" | "failed" | string;
+  circular_id?: string | null;
+  processing_status?: string | null;
+  error?: string | null;
+  created_at?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
 }
 
 export interface HealthResponse {

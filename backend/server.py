@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import get_settings
 from lib.db import connect_db, close_db
 
-from routers import system, public, ingestion, sources, processing, review, crawler
+from routers import system, public, ingestion, sources, processing, review, crawler, subscribers
 
 
 @asynccontextmanager
@@ -44,6 +44,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=[
             "http://localhost:5173",   # Vite dev server
+            "http://127.0.0.1:5173",   # Vite dev server via loopback address
             "http://localhost:3000",
         ],
         allow_credentials=True,
@@ -59,6 +60,7 @@ def create_app() -> FastAPI:
     app.include_router(processing.router, prefix="/api")
     app.include_router(review.router, prefix="/api")
     app.include_router(crawler.router, prefix="/api")
+    app.include_router(subscribers.router, prefix="/api")
 
     return app
 
