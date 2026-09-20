@@ -108,6 +108,165 @@ PIB_SOURCE = Source(
 )
 
 
+# ─── New Karnataka / education source seeds ──────────────────────────────────
+
+_KA_POLICY = CrawlPolicy(
+    max_pages_per_run=3,
+    request_delay_seconds=3,
+    max_documents_per_run=30,
+    respect_robots=True,
+    stop_on_403=True,
+    stop_on_429=True,
+)
+
+# ── Drupal-CMS sources ────────────────────────────────────────────────────────
+
+BESCOM_SOURCE = Source(
+    source_id="bescom", name="BESCOM", adapter="drupal_karnataka",
+    government_level="state", state="Karnataka",
+    base_domains=["bescom.karnataka.gov.in", "www.bescom.karnataka.gov.in"],
+    seed_urls=["https://bescom.karnataka.gov.in/43/circulars/en"],
+    allowed_document_types=["circular", "order", "notification"],
+    crawl_policy=_KA_POLICY, status="active",
+)
+
+KPTCL_SOURCE = Source(
+    source_id="kptcl", name="KPTCL", adapter="drupal_karnataka",
+    government_level="state", state="Karnataka",
+    base_domains=["kptcl.karnataka.gov.in", "www.kptcl.karnataka.gov.in"],
+    seed_urls=["https://kptcl.karnataka.gov.in/5/tender-and-procurement/en"],
+    allowed_document_types=["order", "circular", "notification"],
+    crawl_policy=_KA_POLICY, status="active",
+)
+
+KERC_SOURCE = Source(
+    source_id="kerc", name="KERC", adapter="drupal_karnataka",
+    government_level="state", state="Karnataka",
+    base_domains=["kerc.karnataka.gov.in", "www.kerc.karnataka.gov.in"],
+    seed_urls=["https://kerc.karnataka.gov.in/42/miscellaneous-orders/en"],
+    allowed_document_types=["order", "circular"],
+    crawl_policy=_KA_POLICY, status="active",
+)
+
+MESCOM_SOURCE = Source(
+    source_id="mescom", name="MESCOM", adapter="drupal_karnataka",
+    government_level="state", state="Karnataka",
+    base_domains=["mescom.karnataka.gov.in", "www.mescom.karnataka.gov.in"],
+    seed_urls=["https://mescom.karnataka.gov.in/16/news-and-press-release/en"],
+    allowed_document_types=["press_release", "circular", "notification"],
+    crawl_policy=_KA_POLICY, status="active",
+)
+
+BWSSB_SOURCE = Source(
+    source_id="bwssb", name="BWSSB", adapter="drupal_karnataka",
+    government_level="state", state="Karnataka",
+    base_domains=["bwssb.karnataka.gov.in", "www.bwssb.karnataka.gov.in"],
+    seed_urls=["https://bwssb.karnataka.gov.in/1/news-and-events/en"],
+    allowed_document_types=["notification", "circular", "order"],
+    crawl_policy=_KA_POLICY, status="active",
+)
+
+KUWSDB_SOURCE = Source(
+    source_id="kuwsdb", name="KUWSDB", adapter="drupal_karnataka",
+    government_level="state", state="Karnataka",
+    base_domains=["kuwsdb.karnataka.gov.in", "www.kuwsdb.karnataka.gov.in"],
+    seed_urls=["https://kuwsdb.karnataka.gov.in/42/circulars-&-proceedings/en"],
+    allowed_document_types=["circular", "order"],
+    crawl_policy=_KA_POLICY, status="active",
+)
+
+KSPCB_SOURCE = Source(
+    source_id="kspcb", name="KSPCB", adapter="drupal_karnataka",
+    government_level="state", state="Karnataka",
+    base_domains=["kspcb.karnataka.gov.in", "www.kspcb.karnataka.gov.in"],
+    seed_urls=["https://kspcb.karnataka.gov.in/index.php/consent-management/mines-and-stone-crusher-notifications-circulars"],
+    allowed_document_types=["circular", "notification", "order"],
+    crawl_policy=_KA_POLICY, status="active",
+)
+
+KSEAB_SOURCE = Source(
+    source_id="kseab", name="KSEAB", adapter="drupal_karnataka",
+    government_level="state", state="Karnataka",
+    base_domains=["kseab.karnataka.gov.in", "www.kseab.karnataka.gov.in"],
+    seed_urls=["https://kseab.karnataka.gov.in/"],
+    allowed_document_types=["circular", "notification", "order"],
+    crawl_policy=_KA_POLICY, status="active",
+)
+
+# ── WordPress sources ─────────────────────────────────────────────────────────
+
+VTU_SOURCE = Source(
+    source_id="vtu", name="Visvesvaraya Technological University (VTU)",
+    adapter="wordpress_karnataka",
+    government_level="state", state="Karnataka",
+    base_domains=["vtu.ac.in", "www.vtu.ac.in"],
+    seed_urls=["https://vtu.ac.in/ict-circular-notification/"],
+    allowed_document_types=["circular", "notification"],
+    crawl_policy=_KA_POLICY, status="active",
+)
+
+KARNATAKA_GOV_SOURCE = Source(
+    source_id="karnataka_gov", name="Karnataka Government Portal",
+    adapter="wordpress_karnataka",
+    government_level="state", state="Karnataka",
+    base_domains=["karnataka.gov.in", "www.karnataka.gov.in"],
+    seed_urls=["https://karnataka.gov.in/"],
+    allowed_document_types=["circular", "notification", "order", "gazette_notification"],
+    crawl_policy=_KA_POLICY, status="active",
+)
+
+# ── Individual sources ────────────────────────────────────────────────────────
+
+SSP_KARNATAKA_SOURCE = Source(
+    source_id="ssp_karnataka", name="SSP Karnataka",
+    adapter="ssp_karnataka",
+    government_level="state", state="Karnataka",
+    base_domains=["ssp.karnataka.gov.in", "www.ssp.karnataka.gov.in"],
+    seed_urls=["https://ssp.karnataka.gov.in/"],
+    allowed_document_types=["circular", "notification"],
+    crawl_policy=_KA_POLICY, status="active",
+)
+
+SEVASINDHU_SOURCE = Source(
+    source_id="sevasindhu", name="Seva Sindhu Karnataka",
+    adapter="sevasindhu",
+    government_level="state", state="Karnataka",
+    base_domains=["sevasindhu.karnataka.gov.in", "www.sevasindhu.karnataka.gov.in"],
+    seed_urls=["https://sevasindhu.karnataka.gov.in/"],
+    allowed_document_types=["circular", "notification", "order"],
+    crawl_policy=_KA_POLICY, status="active",
+)
+
+# Minimal/unknown structure — active but may find 0 docs until seed URLs improve
+GBA_SOURCE = Source(
+    source_id="gba", name="Greater Bengaluru Authority (GBA)",
+    adapter="drupal_karnataka",
+    government_level="state", state="Karnataka",
+    base_domains=["gba.karnataka.gov.in", "www.gba.karnataka.gov.in"],
+    seed_urls=["https://gba.karnataka.gov.in/"],
+    allowed_document_types=["circular", "notification", "order"],
+    crawl_policy=_KA_POLICY, status="active",
+)
+
+KSRTC_SOURCE = Source(
+    source_id="ksrtc", name="KSRTC",
+    adapter="drupal_karnataka",
+    government_level="state", state="Karnataka",
+    base_domains=["ksrtc.in", "www.ksrtc.in"],
+    seed_urls=["https://www.ksrtc.in/"],
+    allowed_document_types=["circular", "notification", "order"],
+    crawl_policy=_KA_POLICY, status="active",
+)
+
+# ── All sources list — used by server startup seed ────────────────────────────
+ALL_NEW_SOURCES = [
+    BESCOM_SOURCE, KPTCL_SOURCE, KERC_SOURCE, MESCOM_SOURCE,
+    BWSSB_SOURCE, KUWSDB_SOURCE, KSPCB_SOURCE, KSEAB_SOURCE,
+    VTU_SOURCE, KARNATAKA_GOV_SOURCE,
+    SSP_KARNATAKA_SOURCE, SEVASINDHU_SOURCE,
+    GBA_SOURCE, KSRTC_SOURCE,
+]
+
 # ─── Request / response models ────────────────────────────────────────────────
 
 class CrawlRunRequest(BaseModel):

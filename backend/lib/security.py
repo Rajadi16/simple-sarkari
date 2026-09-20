@@ -18,14 +18,13 @@ from config import get_settings
 # Only domains on this list may be fetched. No guessing, no wildcards.
 
 ALLOWED_DOMAINS: set[str] = {
-    # PIB — Day-1 target
+    # PIB
     "pib.gov.in",
     "www.pib.gov.in",
     "static.pib.gov.in",
     # Central govt
     "dopt.gov.in",
     "www.dopt.gov.in",
-    # PDF host and circular portal linked by the official DoPT homepage.
     "doptcirculars.nic.in",
     "documents.doptcirculars.nic.in",
     "egazette.gov.in",
@@ -34,13 +33,44 @@ ALLOWED_DOMAINS: set[str] = {
     "www.doe.gov.in",
     "india.gov.in",
     "www.india.gov.in",
-    # Karnataka state
-    "egazette.karnataka.gov.in",
+    # Karnataka state portals
     "erajyapatra.karnataka.gov.in",
     "dpar.karnataka.gov.in",
     "finance.karnataka.gov.in",
-    "itbt.karnataka.gov.in",
     "eitbt.karnataka.gov.in",
+    "karnataka.gov.in",
+    "www.karnataka.gov.in",
+    # Karnataka education
+    "vtu.ac.in",
+    "www.vtu.ac.in",
+    "kseab.karnataka.gov.in",
+    "www.kseab.karnataka.gov.in",
+    # Karnataka utilities / energy
+    "bescom.karnataka.gov.in",
+    "www.bescom.karnataka.gov.in",
+    "kptcl.karnataka.gov.in",
+    "www.kptcl.karnataka.gov.in",
+    "kerc.karnataka.gov.in",
+    "www.kerc.karnataka.gov.in",
+    "mescom.karnataka.gov.in",
+    "www.mescom.karnataka.gov.in",
+    # Karnataka water / infra
+    "bwssb.karnataka.gov.in",
+    "www.bwssb.karnataka.gov.in",
+    "kuwsdb.karnataka.gov.in",
+    "www.kuwsdb.karnataka.gov.in",
+    "gba.karnataka.gov.in",
+    "www.gba.karnataka.gov.in",
+    # Karnataka civic / environment
+    "kspcb.karnataka.gov.in",
+    "www.kspcb.karnataka.gov.in",
+    "sevasindhu.karnataka.gov.in",
+    "www.sevasindhu.karnataka.gov.in",
+    "ssp.karnataka.gov.in",
+    "www.ssp.karnataka.gov.in",
+    # KSRTC
+    "ksrtc.in",
+    "www.ksrtc.in",
 }
 
 # Private / reserved IP ranges blocked to prevent SSRF.

@@ -110,6 +110,31 @@ def _load_adapters() -> None:
     except Exception:
         pass
 
+    # ── New Karnataka / education adapters ───────────────────────────────────
+    try:
+        from crawlers.drupal_karnataka import DrupalKarnatakaAdapter
+        for source_id in ("bescom", "kptcl", "kerc", "mescom", "bwssb",
+                          "kuwsdb", "kspcb", "kseab", "gba", "ksrtc"):
+            ADAPTER_REGISTRY[source_id] = DrupalKarnatakaAdapter
+    except Exception:
+        pass
+    try:
+        from crawlers.wordpress_karnataka import WordPressKarnatakaAdapter
+        ADAPTER_REGISTRY["vtu"] = WordPressKarnatakaAdapter
+        ADAPTER_REGISTRY["karnataka_gov"] = WordPressKarnatakaAdapter
+    except Exception:
+        pass
+    try:
+        from crawlers.ssp_karnataka import SspKarnatakaAdapter
+        ADAPTER_REGISTRY["ssp_karnataka"] = SspKarnatakaAdapter
+    except Exception:
+        pass
+    try:
+        from crawlers.sevasindhu import SevaSindhuAdapter
+        ADAPTER_REGISTRY["sevasindhu"] = SevaSindhuAdapter
+    except Exception:
+        pass
+
 
 def get_adapter(adapter_name: str, source_config: dict):
     """Instantiate the adapter for the given source key."""
@@ -136,16 +161,27 @@ async def load_source(db: AsyncIOMotorDatabase, source_id: str) -> Optional[dict
 
 
 async def ensure_pib_source(db: AsyncIOMotorDatabase) -> None:
-    """
-    Seed the PIB source into the DB if it doesn't exist yet.
-    Idempotent — safe to call on every startup.
-    """
+    """Seed the PIB source into the DB if it doesn't exist yet. Idempotent."""
     from models.source import PIB_SOURCE
     existing = await db.sources.find_one({"source_id": "pib"})
     if not existing:
         doc = PIB_SOURCE.model_dump(mode="json")
         doc["_id"] = "pib"
         await db.sources.insert_one(doc)
+
+
+async def ensure_all_sources(db: AsyncIOMotorDatabase) -> None:
+    """
+    Seed all new Karnataka / education sources into the DB.
+    Idempotent — skips any source_id already present.
+    """
+    from models.source import ALL_NEW_SOURCES
+    for source in ALL_NEW_SOURCES:
+        existing = await db.sources.find_one({"source_id": source.source_id})
+        if not existing:
+            doc = source.model_dump(mode="json")
+            doc["_id"] = source.source_id
+            await db.sources.insert_one(doc)
 
 
 # ─── Crawl run record helpers ─────────────────────────────────────────────────
