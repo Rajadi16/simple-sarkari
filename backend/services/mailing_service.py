@@ -32,7 +32,7 @@ def send_urgent_circular_email(circular: CanonicalCircular, recipients: list[str
         logger.warning("No valid recipients provided. Skipping email dispatch.")
         return False
 
-    title = circular.simplification.simplified_title or circular.source_metadata.title
+    title = circular.simplification.simplified_title or circular.identity.title_original
     summary = circular.simplification.summary or "No summary available."
     
     # Construct the subject and body
@@ -40,7 +40,7 @@ def send_urgent_circular_email(circular: CanonicalCircular, recipients: list[str
     body_text = (
         f"A new urgent circular has been published.\n\n"
         f"Title: {title}\n"
-        f"Source: {circular.source_metadata.department_name}\n"
+        f"Source: {circular.classification.department}\n"
         f"Summary: {summary}\n\n"
         f"Read more on the JanVaani portal."
     )
@@ -50,7 +50,7 @@ def send_urgent_circular_email(circular: CanonicalCircular, recipients: list[str
     <head></head>
     <body>
       <h2>URGENT: {title}</h2>
-      <p><strong>Source:</strong> {circular.source_metadata.department_name}</p>
+      <p><strong>Source:</strong> {circular.classification.department}</p>
       <p><strong>Summary:</strong> {summary}</p>
       <br>
       <p>Please check the <a href="https://janvaani.in">JanVaani portal</a> for more details.</p>
