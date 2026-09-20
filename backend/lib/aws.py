@@ -14,6 +14,8 @@ _s3_client = None
 _bedrock_client = None
 _polly_client = None
 _ses_client = None
+_sqs_client = None
+_sagemaker_client = None
 
 
 def _get_boto3_kwargs(settings):
@@ -66,6 +68,28 @@ def get_ses_client():
     return _ses_client
 
 
+def get_sqs_client():
+    """Returns a boto3 SQS client."""
+    global _sqs_client
+    if _sqs_client is None:
+        settings = get_settings()
+        if not settings.aws_enabled:
+            raise RuntimeError("AWS integration is disabled")
+        _sqs_client = boto3.client("sqs", region_name=settings.aws_region, **_get_boto3_kwargs(settings))
+    return _sqs_client
+
+
+def get_sagemaker_client():
+    """Returns a boto3 SageMaker Runtime client."""
+    global _sagemaker_client
+    if _sagemaker_client is None:
+        settings = get_settings()
+        if not settings.aws_enabled:
+            raise RuntimeError("AWS integration is disabled")
+        _sagemaker_client = boto3.client("sagemaker-runtime", region_name=settings.aws_region, **_get_boto3_kwargs(settings))
+    return _sagemaker_client
+
+
 async def upload_to_s3(key: str, body: bytes, content_type: str = "application/octet-stream") -> str:
     """Upload bytes to S3 and return the key."""
     settings = get_settings()
@@ -110,3 +134,26 @@ async def check_s3_access() -> None:
         get_s3_client().head_bucket,
         Bucket=settings.s3_bucket,
     )
+
+
+async def enqueue_message(message_type: str, payload: dict) -> str:
+    """
+    Enqueue a message to the configured SQS queue.
+    """
+    settings = get_settings()
+    if not settings.aws_sqs_queue_url:
+        raise ValueError("SQS Queue URL is not configured (aws_sqs_queue_url)")
+
+    import json
+    
+    message_body = {
+        "message_type": message_type,
+        "payload": payload
+    }
+    
+    response = await asyncio.to_thread(
+        get_sqs_client().send_message,
+        QueueUrl=settings.aws_sqs_queue_url,
+        MessageBody=json.dumps(message_body)
+    )
+    return response.get("MessageId", "")
