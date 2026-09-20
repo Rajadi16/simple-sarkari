@@ -25,7 +25,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from lib.db import get_db
 from lib.security import require_reviewer, validate_url
 from lib.dates import utcnow
-from workers.ingestion_worker import process_url_ingestion, process_text_ingestion
+from lib.aws import enqueue_message
 
 router = APIRouter(
     prefix="/admin/ingestions",
@@ -126,7 +126,6 @@ def _job_to_response(doc: dict) -> IngestionJobResponse:
 @router.post("/url", status_code=status.HTTP_202_ACCEPTED)
 async def ingest_url(
     body: UrlIngestionRequest,
-    background_tasks: BackgroundTasks,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> dict:
     """
@@ -143,12 +142,13 @@ async def ingest_url(
         payload={"url": body.url, "source_id": body.source_id},
     )
 
-    background_tasks.add_task(
-        process_url_ingestion,
-        db=db,
-        job_id=job_id,
-        url=body.url,
-        source_id=body.source_id,
+    await enqueue_message(
+        "url_ingestion",
+        {
+            "job_id": job_id,
+            "url": body.url,
+            "source_id": body.source_id,
+        }
     )
 
     return {"job_id": job_id, "status": "pending"}
@@ -159,7 +159,6 @@ async def ingest_url(
 @router.post("/text", status_code=status.HTTP_202_ACCEPTED)
 async def ingest_text(
     body: TextIngestionRequest,
-    background_tasks: BackgroundTasks,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> dict:
     """
@@ -188,11 +187,12 @@ async def ingest_text(
 
     job_id = await _create_job(db, job_type="text_ingestion", payload=payload)
 
-    background_tasks.add_task(
-        process_text_ingestion,
-        db=db,
-        job_id=job_id,
-        data=payload,
+    await enqueue_message(
+        "text_ingestion",
+        {
+            "job_id": job_id,
+            "data": payload,
+        }
     )
 
     return {"job_id": job_id, "status": "pending"}
@@ -227,7 +227,6 @@ async def get_ingestion_status(
 @router.post("/{job_id}/retry", status_code=status.HTTP_202_ACCEPTED)
 async def retry_ingestion(
     job_id: str,
-    background_tasks: BackgroundTasks,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> dict:
     """
@@ -261,19 +260,21 @@ async def retry_ingestion(
     job_type = doc.get("job_type", "url_ingestion")
 
     if job_type == "url_ingestion":
-        background_tasks.add_task(
-            process_url_ingestion,
-            db=db,
-            job_id=job_id,
-            url=payload["url"],
-            source_id=payload["source_id"],
+        await enqueue_message(
+            "url_ingestion",
+            {
+                "job_id": job_id,
+                "url": payload["url"],
+                "source_id": payload["source_id"],
+            }
         )
     elif job_type == "text_ingestion":
-        background_tasks.add_task(
-            process_text_ingestion,
-            db=db,
-            job_id=job_id,
-            data=payload,
+        await enqueue_message(
+            "text_ingestion",
+            {
+                "job_id": job_id,
+                "data": payload,
+            }
         )
     else:
         raise HTTPException(

@@ -128,7 +128,6 @@ async def update_source(
 async def trigger_crawl(
     source_id: str,
     body: CrawlRunRequest,
-    background_tasks: BackgroundTasks,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> dict:
     """
@@ -138,7 +137,7 @@ async def trigger_crawl(
       - Source exists and status == 'active'
       - crawl_policy.enabled == true
 
-    Runs as a BackgroundTask. Returns run_id immediately for polling.
+    Enqueues the job to SQS. Returns run_id immediately for polling.
     """
     source_doc = await _get_source_or_404(db, source_id)
 
@@ -159,13 +158,15 @@ async def trigger_crawl(
     from services.crawler_service import _create_crawl_run
     run = await _create_crawl_run(db, source_id)
 
-    background_tasks.add_task(
-        process_crawl_run,
-        db=db,
-        run_id=run.id,
-        source_id=source_id,
-        max_pages=body.max_pages,
-        max_documents=body.max_documents,
+    from lib.aws import enqueue_message
+    await enqueue_message(
+        "crawl_run",
+        {
+            "run_id": run.id,
+            "source_id": source_id,
+            "max_pages": body.max_pages,
+            "max_documents": body.max_documents,
+        }
     )
 
     return {"run_id": run.id, "status": "pending"}
