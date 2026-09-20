@@ -32,6 +32,8 @@ def _public_circular_view(doc: dict) -> dict:
     dates = doc.get("dates") or {}
     classification = doc.get("classification") or {}
     processing = doc.get("processing") or {}
+    provenance = doc.get("provenance") or {}
+    attachments = doc.get("attachments") or []
 
     return {
         "id": doc.get("id"),
@@ -53,6 +55,8 @@ def _public_circular_view(doc: dict) -> dict:
         "published_date": dates.get("published_date"),
         "effective_from": dates.get("effective_from"),
         "effective_until": dates.get("effective_until"),
+        "last_updated": dates.get("last_updated"),
+        "retrieved_at": provenance.get("retrieved_at"),
         # Original text (for detail view)
         "original_text": content.get("original_text"),
         # Simplification
@@ -66,9 +70,13 @@ def _public_circular_view(doc: dict) -> dict:
         "eligibility": simplification.get("eligibility", []),
         "warnings": simplification.get("warnings", []),
         "keywords": simplification.get("keywords", []),
+        "source_excerpts": simplification.get("source_excerpts", []),
+        "attachments": attachments,
         # Status
         "published": processing.get("published", False),
         "translation_languages": processing.get("translation_languages", []),
+        "audio_available": False,
+        "review_date": processing.get("reviewed_at"),
     }
 
 
@@ -120,7 +128,12 @@ async def search_circulars(
     projection = {"_id": 0} if not q else {"score": {"$meta": "textScore"}}
 
     cursor = db.circulars.find(query, projection).sort(sort_key).skip(skip).limit(limit)
-    items = [_public_circular_view(doc) async for doc in cursor]
+    items = []
+    async for doc in cursor:
+        view = _public_circular_view(doc)
+        audio = await db.audio_assets.find_one({"circular_id": view["id"], "status": "ready"}, {"_id": 1})
+        view["audio_available"] = audio is not None
+        items.append(view)
 
     return {"items": items, "total": total, "page": page, "limit": limit}
 
@@ -141,7 +154,16 @@ async def get_circular(
     if not processing.get("published", False):
         raise HTTPException(status_code=404, detail=f"Circular '{circular_id}' not found")
 
-    return _public_circular_view(doc)
+    view = _public_circular_view(doc)
+    audio = await db.audio_assets.find_one({"circular_id": circular_id, "status": "ready"}, {"_id": 1})
+    view["audio_available"] = audio is not None
+    latest_review = await db.reviews.find_one(
+        {"circular_id": circular_id, "status": {"$in": ["approved", "published"]}},
+        sort=[("reviewed_at", -1)],
+    )
+    if latest_review:
+        view["review_date"] = latest_review.get("reviewed_at")
+    return view
 
 
 # ─── GET /circulars/{circular_id}/translations/{language} ─────────────────────

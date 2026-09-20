@@ -46,6 +46,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=[
             "http://localhost:5173",   # Vite dev server
+            "http://127.0.0.1:5173",   # Vite dev server via loopback address
             "http://localhost:3000",
         ],
         allow_credentials=True,

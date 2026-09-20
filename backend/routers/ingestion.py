@@ -19,7 +19,7 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from lib.db import get_db
@@ -61,6 +61,7 @@ class TextIngestionRequest(BaseModel):
     state: Optional[str] = None
     date_text: Optional[str] = None         # raw date string as it appears on the document
     text: str
+    target_languages: list[str] = Field(default_factory=list)
 
 
 class IngestionJobResponse(BaseModel):
@@ -183,6 +184,7 @@ async def ingest_text(
         "government_level": body.government_level,
         "state": body.state,
         "date_text": body.date_text,
+        "target_languages": body.target_languages,
     }
 
     job_id = await _create_job(db, job_type="text_ingestion", payload=payload)

@@ -15,6 +15,7 @@ import type {
   PaginatedResponse,
   CatalogueFilters,
   HealthResponse,
+  IngestionJob,
 } from "@/types";
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -37,7 +38,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(error.detail || `HTTP ${res.status}`);
+    const detail = Array.isArray(error.detail)
+      ? error.detail.map((item: { msg?: string }) => item.msg || "Request was rejected").join("; ")
+      : error.detail;
+    throw new Error(detail || `HTTP ${res.status}`);
   }
   return res.json();
 }
@@ -61,20 +65,25 @@ export const api = {
     request<{ url?: string; audio_available: boolean }>(`/circulars/${circularId}/audio/${language}`),
   getFilters: () =>
     request<CatalogueFilters>("/catalogue/filters"),
+  subscribe: (email: string) =>
+    request<{ status: "subscribed" | "already_subscribed" | "resubscribed" }>("/subscribers", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    }),
 
   // ─── Admin: Ingestion ────────────────────────────────────────────────
   ingestUrl: (url: string, sourceId: string) =>
-    request<{ ingestion_id: string }>("/admin/ingestions/url", {
+    request<{ job_id: string; status: string }>("/admin/ingestions/url", {
       method: "POST",
       body: JSON.stringify({ url, source_id: sourceId }),
     }),
-  ingestText: (data: { title: string; publisher: string; source_url: string; original_language: string; text: string }) =>
-    request<{ ingestion_id: string }>("/admin/ingestions/text", {
+  ingestText: (data: { title: string; publisher: string; source_url: string; original_language: string; text: string; target_languages?: string[]; government_level?: string; state?: string; department?: string }) =>
+    request<{ job_id: string; status: string }>("/admin/ingestions/text", {
       method: "POST",
       body: JSON.stringify(data),
     }),
   getIngestion: (id: string) =>
-    request<{ status: string }>(`/admin/ingestions/${id}`),
+    request<IngestionJob>(`/admin/ingestions/${id}`),
   retryIngestion: (id: string) =>
     request<{ status: string }>(`/admin/ingestions/${id}/retry`, { method: "POST" }),
 
@@ -88,7 +97,7 @@ export const api = {
   updateSource: (id: string, updates: Partial<Source>) =>
     request<Source>(`/admin/sources/${id}`, { method: "PATCH", body: JSON.stringify(updates) }),
   triggerCrawl: (sourceId: string, opts?: { max_pages?: number; max_documents?: number; backfill?: boolean }) =>
-    request<{ run_id: string }>(`/admin/sources/${sourceId}/crawl`, {
+    request<{ run_id: string; status: string }>(`/admin/sources/${sourceId}/crawl`, {
       method: "POST",
       body: JSON.stringify(opts || {}),
     }),
@@ -98,7 +107,7 @@ export const api = {
   // ─── Admin: Jobs ─────────────────────────────────────────────────────
   listJobs: (params?: Record<string, string>) => {
     const qs = params ? "?" + new URLSearchParams(params).toString() : "";
-    return request<PaginatedResponse<Job>>(`/admin/jobs${qs}`);
+    return request<PaginatedResponse<Job>>(`/admin/jobs/${qs ? qs : ""}`);
   },
   getJob: (id: string) =>
     request<Job>(`/admin/jobs/${id}`),
@@ -110,7 +119,7 @@ export const api = {
   // ─── Admin: Reviews ──────────────────────────────────────────────────
   listReviews: (params?: Record<string, string>) => {
     const qs = params ? "?" + new URLSearchParams(params).toString() : "";
-    return request<PaginatedResponse<Review>>(`/admin/reviews${qs}`);
+    return request<PaginatedResponse<Review>>(`/admin/reviews/${qs ? qs : ""}`);
   },
   getReview: (id: string) =>
     request<Review>(`/admin/reviews/${id}`),

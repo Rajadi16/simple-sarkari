@@ -106,7 +106,7 @@ async def process_url_ingestion(
             db, circular.id, circular.processing.status
         )
         if processing_status == "ai_draft_generated":
-            await create_translations(db, circular.id, ["hi-IN", "kn-IN"])
+            await create_translations(db, circular.id, data.get("target_languages") or ["hi-IN", "kn-IN"])
             updated_doc = await db.circulars.find_one({"id": circular.id})
             if updated_doc:
                 processing_status = updated_doc.get("processing", {}).get("status", "translation_generated")
