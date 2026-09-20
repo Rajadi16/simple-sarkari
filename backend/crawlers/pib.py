@@ -168,7 +168,7 @@ class PibAdapter(BaseCrawlerAdapter):
         (for paginated listings) and max_documents_per_run total docs.
         """
         candidates: list[CandidateDocument] = []
-        seed_urls: list[str] = self.source.get("seed_urls", [])
+        seed_urls: list[str] = self.listing_urls()
         max_docs = self.source.get("max_documents_per_run", 50)
 
         for seed_url in seed_urls:
@@ -179,10 +179,49 @@ class PibAdapter(BaseCrawlerAdapter):
                 continue
 
             html = result.body.decode("utf-8", errors="replace")
-            new_candidates = self._parse_listing_html(html, seed_url)
+            if "xml" in (result.content_type or "").lower() or html.lstrip().startswith(("<?xml", "<rss")):
+                new_candidates = self._parse_listing_rss(result.body, seed_url)
+            else:
+                new_candidates = self._parse_listing_html(html, seed_url)
             candidates.extend(new_candidates)
 
-        return candidates[:max_docs]
+        unique = {candidate.detail_url: candidate for candidate in candidates}
+        return list(unique.values())[:max_docs]
+
+    def _parse_listing_rss(self, body: bytes, base_url: str) -> list[CandidateDocument]:
+        """Discover releases from an explicitly configured official RSS feed.
+
+        Feed descriptions are not full documents. Every item still goes through
+        fetch_detail(), extraction, and the same access checks as an HTML listing.
+        """
+        from lxml import etree
+
+        parser = etree.XMLParser(resolve_entities=False, load_dtd=False, no_network=True)
+        root = etree.fromstring(body, parser=parser)
+        if root.tag != "rss":
+            raise ValueError("Expected an RSS listing; received another XML document")
+        candidates = []
+        seen = set()
+        for item in root.findall("./channel/item"):
+            url = self.canonicalize_url((item.findtext("link") or "").strip(), base_url)
+            parsed = urlparse(url)
+            if parsed.scheme != "https" or not self.is_allowed_domain(url):
+                continue
+            if not any(parsed.path.lower().startswith(path.lower()) for path in _DETAIL_PATHS):
+                continue
+            prid = _extract_prid(url)
+            if not prid or prid in seen:
+                continue
+            seen.add(prid)
+            candidates.append(CandidateDocument(
+                source_id="pib", detail_url=url,
+                title=_clean_text(item.findtext("title") or "") or None,
+                published_date_text=item.findtext("pubDate"),
+                document_type=_infer_document_type(url),
+                language="en-IN", discovered_from_url=base_url,
+                source_reference_id=prid,
+            ))
+        return candidates
 
     def _parse_listing_html(
         self, html: str, base_url: str
@@ -201,6 +240,9 @@ class PibAdapter(BaseCrawlerAdapter):
         for anchor in soup.find_all("a", href=True):
             href = anchor["href"].strip()
             abs_url = urljoin(base_url, href)
+
+            if not self.is_allowed_domain(abs_url) or urlparse(abs_url).scheme != "https":
+                continue
 
             # Must be a known detail path
             path = urlparse(abs_url).path

@@ -1,0 +1,2 @@
+# Optional local inspection only; the API and normal crawlers do not need Chrome.
+selenium==4.49.0

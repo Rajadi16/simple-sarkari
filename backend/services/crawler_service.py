@@ -27,13 +27,15 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
-from motor.motor_asyncio import AsyncIOMotorDatabase
+if TYPE_CHECKING:
+    from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from config import get_settings
 from lib.dates import utcnow
 from models.source import CrawlRun, Source
+from crawlers.source_config import normalize_source_config
 from models.circular import (
     CanonicalCircular,
     CandidateDocument,
@@ -127,10 +129,10 @@ def get_adapter(adapter_name: str, source_config: dict):
 async def load_source(db: AsyncIOMotorDatabase, source_id: str) -> Optional[dict]:
     """
     Load source config from the `sources` collection.
-    Returns a plain dict (the Mongo document) or None.
+    Returns an independent, flattened adapter configuration or None.
     """
     doc = await db.sources.find_one({"source_id": source_id})
-    return doc
+    return normalize_source_config(doc) if doc else None
 
 
 async def ensure_pib_source(db: AsyncIOMotorDatabase) -> None:
@@ -251,6 +253,28 @@ def _build_blocked_circular(
 
 # ─── Single-URL ingestion (used by both crawler and /url endpoint) ────────────
 
+async def _store_primary_capture(circular: CanonicalCircular, result) -> None:
+    """Store fetched PDFs once, with the right extension and provenance field."""
+    is_pdf = result.body.startswith(b"%PDF-") or "pdf" in (result.content_type or "").lower()
+    extension = "pdf" if is_pdf else "html"
+    key, _s3_backed = await store_raw(circular.id, result.body, extension)
+    if is_pdf:
+        circular.provenance.raw_pdf_s3_key = key
+        for attachment in circular.attachments:
+            if attachment.url == result.url and attachment.type == "pdf":
+                attachment.s3_key = key
+                attachment.file_size_bytes = len(result.body)
+    else:
+        circular.provenance.raw_html_s3_key = key
+    circular.provenance.content_hash = result.content_hash or compute_content_hash(result.body)
+
+
+def _require_extracted_text(circular: CanonicalCircular) -> None:
+    """Keep failed/empty extraction out of the automatic simplification path."""
+    if not (circular.content.original_text or "").strip() or circular.extraction.status == "failed":
+        circular.processing.status = "manual_review_required"
+
+
 async def ingest_single_url(
     db: AsyncIOMotorDatabase,
     url: str,
@@ -269,127 +293,134 @@ async def ingest_single_url(
     """
     source_doc = await load_source(db, source_id)
     if source_doc is None:
-        # Fall back to PIB defaults if source not yet in DB
+        # Only PIB has an implicit seed. Other IDs require their own registry entry.
+        if source_id != "pib":
+            raise ValueError(f"Source '{source_id}' not found in DB")
         from models.source import PIB_SOURCE
         source_doc = PIB_SOURCE.to_crawler_config()
 
     adapter = get_adapter(source_doc.get("adapter", source_id), source_doc)
 
-    candidate = CandidateDocument(
-        source_id=source_id,
-        detail_url=url,
-        discovered_from_url=discovered_from_url,
-        source_reference_id=None,
-    )
-
-    # Try to extract PRID from the URL for dedup purposes
-    from urllib.parse import urlparse, parse_qs
-    qs = parse_qs(urlparse(url).query)
-    prid_val = qs.get("PRID") or qs.get("prid")
-    if prid_val:
-        candidate.source_reference_id = f"PRID={prid_val[0]}"
-
-    fetch_result = await adapter.fetch_detail(candidate)
-    retrieved_at = fetch_result.fetched_at
-
-    # ── Blocked fetch ──
-    if fetch_result.blocked:
-        # Dedup blocked stubs by source_reference_id (PRID) — don't create
-        # a new stub every time the same URL is re-attempted while still blocked.
-        if candidate.source_reference_id:
-            existing_blocked = await db.circulars.find_one(
-                {
-                    "source.source_reference_id": candidate.source_reference_id,
-                    "processing.status": "manual_review_required",
-                },
-                projection={"_id": 1},
+    try:
+        async with asyncio.timeout(get_settings().crawler_run_timeout_seconds):
+            candidate = CandidateDocument(
+                source_id=source_id,
+                detail_url=url,
+                discovered_from_url=discovered_from_url,
+                source_reference_id=None,
             )
-            if existing_blocked:
-                existing = await db.circulars.find_one({"_id": existing_blocked["_id"]})
-                await adapter.close()
+
+            # Try to extract PRID from the URL for dedup purposes
+            from urllib.parse import urlparse, parse_qs
+            qs = parse_qs(urlparse(url).query)
+            prid_val = qs.get("PRID") or qs.get("prid")
+            if prid_val:
+                candidate.source_reference_id = f"PRID={prid_val[0]}"
+
+            fetch_result = await adapter.fetch_detail(candidate)
+            retrieved_at = fetch_result.fetched_at
+
+            # ── Blocked fetch ──
+            if fetch_result.blocked:
+                # Dedup blocked stubs by source_reference_id (PRID) — don't create
+                # a new stub every time the same URL is re-attempted while still blocked.
+                if candidate.source_reference_id:
+                    existing_blocked = await db.circulars.find_one(
+                        {
+                            "source.source_reference_id": candidate.source_reference_id,
+                            "processing.status": "manual_review_required",
+                        },
+                        projection={"_id": 1},
+                    )
+                    if existing_blocked:
+                        existing = await db.circulars.find_one({"_id": existing_blocked["_id"]})
+                        if existing:
+                            existing.pop("_id", None)
+                            return CanonicalCircular(**existing)
+
+                circular = _build_blocked_circular(
+                    candidate,
+                    source_doc,
+                    fetch_result.block_reason or "unknown",
+                    fetch_result.status_code or None,
+                    retrieved_at,
+                )
+                await save_circular(db, circular)
+                await log_ingestion_event(
+                    db,
+                    event_type="fetch_blocked",
+                    circular_id=circular.id,
+                    source_id=source_id,
+                    detail={"url": url, "reason": fetch_result.block_reason},
+                )
+                return circular
+
+            if fetch_result.not_modified:
+                existing = await db.circulars.find_one({
+                    "source.source_id": source_id,
+                    "source.source_url": url,
+                    "processing.status": {"$ne": "manual_review_required"},
+                })
                 if existing:
                     existing.pop("_id", None)
                     return CanonicalCircular(**existing)
+                adapter.invalidate_fetch_cache()
+                raise ValueError("HTTP 304 without a stored document; no response body to extract")
 
-        circular = _build_blocked_circular(
-            candidate,
-            source_doc,
-            fetch_result.block_reason or "unknown",
-            fetch_result.status_code or None,
-            retrieved_at,
-        )
-        await save_circular(db, circular)
-        await log_ingestion_event(
-            db,
-            event_type="fetch_blocked",
-            circular_id=circular.id,
-            source_id=source_id,
-            detail={"url": url, "reason": fetch_result.block_reason},
-        )
-        await adapter.close()
-        return circular
+            # ── Dedup check ──
+            if fetch_result.content_hash and await is_duplicate(db, fetch_result.content_hash):
+                # Return the existing document rather than a new stub
+                existing = await db.circulars.find_one(
+                    {"provenance.content_hash": fetch_result.content_hash}
+                )
+                if existing:
+                    # Re-hydrate as CanonicalCircular — strip Mongo _id first
+                    existing.pop("_id", None)
+                    return CanonicalCircular(**existing)
+                # Shouldn't happen, but if it does fall through to re-parse
 
-    # ── Dedup check ──
-    if fetch_result.content_hash and await is_duplicate(db, fetch_result.content_hash):
-        # Return the existing document rather than a new stub
-        existing = await db.circulars.find_one(
-            {"provenance.content_hash": fetch_result.content_hash}
-        )
-        await adapter.close()
-        if existing:
-            # Re-hydrate as CanonicalCircular — strip Mongo _id first
-            existing.pop("_id", None)
-            return CanonicalCircular(**existing)
-        # Shouldn't happen, but if it does fall through to re-parse
+            # ── Parse ──
+            circular = await adapter.parse(candidate, fetch_result)
 
-    # ── Parse ──
-    circular = await adapter.parse(candidate, fetch_result)
+            await _store_primary_capture(circular, fetch_result)
 
-    # ── Store raw HTML ──
-    raw_key, s3_backed = await store_raw(circular.id, fetch_result.body, "html")
-    # Patch provenance with the stored key
-    circular.provenance.raw_html_s3_key = raw_key
-    circular.provenance.is_s3_backed = s3_backed
-    circular.provenance.content_hash = (
-        fetch_result.content_hash or compute_content_hash(fetch_result.body)
-    )
+            # ── Handle any PDF attachments ──
+            for attachment in circular.attachments:
+                if attachment.type == "pdf" and attachment.url and attachment.s3_key is None:
+                    pdf_result = await adapter.fetch(attachment.url)
+                    if not pdf_result.blocked and pdf_result.body:
+                        pdf_key, pdf_s3 = await store_raw(circular.id, pdf_result.body, "pdf")
+                        attachment.s3_key = pdf_key
+                        attachment.file_size_bytes = len(pdf_result.body)
+                        # If we got a PDF and there's no HTML text, extract from PDF
+                        if not circular.content.original_text:
+                            from services.extraction_service import extract_pdf, build_content, build_extraction
+                            pdf_data = extract_pdf(pdf_result.body)
+                            circular.content = build_content(pdf_data)
+                            circular.extraction = build_extraction(pdf_data)
+                            circular.provenance.raw_pdf_s3_key = pdf_key
+                        circular.processing.status = "extracted"
 
-    # ── Handle any PDF attachments ──
-    for attachment in circular.attachments:
-        if attachment.type == "pdf" and attachment.url and attachment.s3_key is None:
-            pdf_result = await adapter.fetch(attachment.url)
-            if not pdf_result.blocked and pdf_result.body:
-                pdf_key, pdf_s3 = await store_raw(circular.id, pdf_result.body, "pdf")
-                attachment.s3_key = pdf_key
-                attachment.file_size_bytes = len(pdf_result.body)
-                # If we got a PDF and there's no HTML text, extract from PDF
-                if not circular.content.original_text:
-                    from services.extraction_service import extract_pdf, build_content, build_extraction
-                    pdf_data = extract_pdf(pdf_result.body)
-                    circular.content = build_content(pdf_data)
-                    circular.extraction = build_extraction(pdf_data)
-                    circular.provenance.raw_pdf_s3_key = pdf_key
-                if not s3_backed and pdf_s3:
-                    # HTML fell back to local but PDF made it to S3 — unlikely,
-                    # but keep is_s3_backed as the AND of all stores for safety
-                    circular.provenance.is_s3_backed = False
-                circular.processing.status = "extracted"
+            # ── Save ──
+            _require_extracted_text(circular)
+            if circular.processing.status == "manual_review_required":
+                adapter.invalidate_fetch_cache()
+            await save_circular(db, circular)
+            await log_ingestion_event(
+                db,
+                event_type="circular_extracted",
+                circular_id=circular.id,
+                source_id=source_id,
+                detail={"url": url, "status": circular.processing.status},
+            )
 
-    # ── Save ──
-    await save_circular(db, circular)
-    await log_ingestion_event(
-        db,
-        event_type="circular_extracted",
-        circular_id=circular.id,
-        source_id=source_id,
-        detail={"url": url, "status": circular.processing.status},
-    )
+            return circular
+    except BaseException:
+        adapter.invalidate_fetch_cache()
+        raise
+    finally:
+        await asyncio.wait_for(adapter.close(), timeout=5)
 
-    await adapter.close()
-    return circular
-
-
-# ─── Full crawl run ───────────────────────────────────────────────────────────
 
 async def run_crawl(
     db: AsyncIOMotorDatabase,
@@ -398,208 +429,213 @@ async def run_crawl(
     max_documents: int = 50,
     run_id: Optional[str] = None,
 ) -> CrawlRun:
-    """
-    Execute a full crawl run for the given source.
+    """Run once within a deadline and persist a truthful terminal outcome.
 
-    1. Load source config
-    2. Instantiate adapter
-    3. fetch_listing() → candidates
-    4. Dedup filter
-    5. For each new candidate: fetch_detail + parse + store + save
-    6. Respect crawl_policy limits
-    7. Return CrawlRun telemetry record
-
-    Blocked fetches are recorded as manual_review_required — never retried.
-
-    If run_id is supplied (router pre-created the record), load and use that
-    record. Otherwise create a new one (direct / programmatic callers).
+    A failed run can contain documents saved before the failure. Counters are
+    retained; blocked/empty listings must not masquerade as successful crawls.
     """
     if run_id is not None:
         doc = await db.crawl_runs.find_one({"_id": run_id})
         if doc is None:
             raise ValueError(f"Crawl run '{run_id}' not found in DB")
         run = CrawlRun.model_validate(doc)
-        # Mark it running now that the worker has picked it up
         run.status = "running"
         await _update_crawl_run(db, run, status="running")
     else:
         run = await _create_crawl_run(db, source_id)
 
+    adapter = None
+    budget = get_settings().crawler_run_timeout_seconds
     try:
-        # ── Load source ──
-        source_doc = await load_source(db, source_id)
-        if source_doc is None:
-            await _update_crawl_run(
-                db, run,
-                status="failed",
-                completed_at=utcnow().isoformat(),
-                errors=[{"error": f"Source '{source_id}' not found in DB"}],
+        async with asyncio.timeout(budget):
+            source_doc = await load_source(db, source_id)
+            if source_doc is None:
+                raise ValueError(f"Source '{source_id}' not found in DB")
+            if not source_doc.get("enabled", True):
+                raise ValueError(f"Source '{source_id}' is paused or disabled")
+            source_doc["max_pages_per_run"] = min(
+                max_pages, source_doc.get("max_pages_per_run", max_pages)
             )
-            run.status = "failed"
-            return run
+            source_doc["max_documents_per_run"] = min(
+                max_documents, source_doc.get("max_documents_per_run", max_documents)
+            )
+            if min(source_doc["max_pages_per_run"], source_doc["max_documents_per_run"]) < 1:
+                raise ValueError("Crawl page and document limits must be positive")
+            adapter = get_adapter(source_doc.get("adapter", source_id), source_doc)
+            await _crawl_documents(db, run, source_doc, adapter)
+    except TimeoutError:
+        run.errors.append({"reason": "crawl_timeout", "error": f"Crawl exceeded {budget:g}s; stopped without rerunning"})
+    except asyncio.CancelledError:
+        run.errors.append({"reason": "crawl_cancelled", "error": "Crawl was cancelled"})
+        raise
+    except Exception as exc:
+        run.errors.append({"reason": "crawl_error", "error": f"{type(exc).__name__}: {exc}"})
+    finally:
+        if adapter is not None:
+            if run.errors:
+                adapter.invalidate_fetch_cache()
+            try:
+                await asyncio.wait_for(adapter.close(), timeout=5)
+            except Exception as exc:
+                run.errors.append({"reason": "cleanup_error", "error": str(exc)})
+        run.status = "failed" if run.errors else "completed"
+        run.completed_at = utcnow()
+        await asyncio.wait_for(_update_crawl_run(
+            db, run,
+            **run.model_dump(mode="json", exclude={"id", "source_id", "started_at"}),
+        ), timeout=5)
+    return run
 
-        # Apply per-run overrides to crawl policy
-        source_doc = dict(source_doc)
-        source_doc["max_pages_per_run"] = min(
-            max_pages, source_doc.get("max_pages_per_run", max_pages)
-        )
-        source_doc["max_documents_per_run"] = min(
-            max_documents, source_doc.get("max_documents_per_run", max_documents)
-        )
 
-        adapter_name = source_doc.get("adapter", source_id)
-        adapter = get_adapter(adapter_name, source_doc)
-
-        # ── Listing ──
+async def _crawl_documents(db, run: CrawlRun, source_doc: dict, adapter) -> None:
+    source_id = run.source_id
+    # ── Listing ──
+    try:
         candidates = await adapter.fetch_listing()
-        run.documents_discovered = len(candidates)
-        await _update_crawl_run(
-            db, run, documents_discovered=run.documents_discovered
-        )
+    finally:
+        run.pages_fetched = sum(event["http_status"] > 0 for event in adapter.fetch_events)
+    listing_events = list(adapter.fetch_events)
+    for event in listing_events:
+        if event["blocked"]:
+            run.blocked_requests += 1
+            run.errors.append(dict(event, stage="listing"))
+    if run.errors:
+        return
+    if not candidates:
+        if listing_events and all(event["not_modified"] for event in listing_events):
+            return  # unchanged listings are an explicit no-op
+        run.errors.append({
+            "stage": "listing", "reason": "no_document_links",
+            "error": "No documents discovered. Inspect the listing or use manual ingestion; do not rerun automatically.",
+        })
+        return
+    run.documents_discovered = len(candidates)
+    await _update_crawl_run(
+        db, run, documents_discovered=run.documents_discovered
+    )
 
-        errors: list[dict] = []
-        docs_processed = 0
+    errors = run.errors
+    docs_processed = 0
 
-        for candidate in candidates:
-            if docs_processed >= source_doc["max_documents_per_run"]:
-                break
+    for candidate in candidates[:source_doc["max_documents_per_run"]]:
+        if docs_processed >= source_doc["max_documents_per_run"]:
+            break
 
-            # Dedup by source_reference_id first (fast path — no fetch needed)
-            if candidate.source_reference_id:
-                dup = await db.circulars.find_one(
-                    {"source.source_reference_id": candidate.source_reference_id},
-                    projection={"_id": 1},
-                )
-                if dup:
-                    run.documents_duplicate += 1
-                    continue
-
-            # ── Fetch detail ──
-            fetch_result = await adapter.fetch_detail(candidate)
-            retrieved_at = fetch_result.fetched_at
-
-            if fetch_result.blocked:
-                # Record block — do not retry
-                blocked_circ = _build_blocked_circular(
-                    candidate,
-                    source_doc,
-                    fetch_result.block_reason or "unknown",
-                    fetch_result.status_code or None,
-                    retrieved_at,
-                )
-                await save_circular(db, blocked_circ)
-                await log_ingestion_event(
-                    db,
-                    event_type="fetch_blocked",
-                    circular_id=blocked_circ.id,
-                    source_id=source_id,
-                    detail={
-                        "url": candidate.detail_url,
-                        "reason": fetch_result.block_reason,
-                    },
-                )
-                run.blocked_requests += 1
-                errors.append({
-                    "url": candidate.detail_url,
-                    "reason": fetch_result.block_reason,
-                })
-                docs_processed += 1
-                continue
-
-            if fetch_result.not_modified:
+        # Dedup by source_reference_id first (fast path — no fetch needed)
+        if candidate.source_reference_id:
+            dup = await db.circulars.find_one(
+                {"source.source_id": source_id,
+                 "source.source_reference_id": candidate.source_reference_id,
+                 "processing.status": {"$ne": "manual_review_required"}},
+                projection={"_id": 1},
+            )
+            if dup:
                 run.documents_duplicate += 1
                 continue
 
-            # ── Dedup by content hash ──
-            if fetch_result.content_hash:
-                if await is_duplicate(db, fetch_result.content_hash):
-                    run.documents_duplicate += 1
-                    continue
+        # ── Fetch detail ──
+        fetch_result = await adapter.fetch_detail(candidate)
+        retrieved_at = fetch_result.fetched_at
 
-            # ── Parse ──
-            try:
-                circular = await adapter.parse(candidate, fetch_result)
-            except Exception as exc:
-                errors.append({
-                    "url": candidate.detail_url,
-                    "reason": f"parse_error: {exc}",
-                })
-                docs_processed += 1
-                continue
-
-            # ── Store raw HTML ──
-            raw_key, s3_backed = await store_raw(circular.id, fetch_result.body, "html")
-            circular.provenance.raw_html_s3_key = raw_key
-            circular.provenance.is_s3_backed = s3_backed
-            circular.provenance.content_hash = (
-                fetch_result.content_hash or compute_content_hash(fetch_result.body)
+        if fetch_result.blocked:
+            # Record block — do not retry
+            blocked_circ = _build_blocked_circular(
+                candidate,
+                source_doc,
+                fetch_result.block_reason or "unknown",
+                fetch_result.status_code or None,
+                retrieved_at,
             )
-
-            # ── PDF attachments ──
-            for attachment in circular.attachments:
-                if attachment.type == "pdf" and attachment.url and attachment.s3_key is None:
-                    pdf_result = await adapter.fetch(attachment.url)
-                    if not pdf_result.blocked and pdf_result.body:
-                        pdf_key, pdf_s3 = await store_raw(circular.id, pdf_result.body, "pdf")
-                        attachment.s3_key = pdf_key
-                        attachment.file_size_bytes = len(pdf_result.body)
-                        if not circular.content.original_text:
-                            from services.extraction_service import (
-                                extract_pdf, build_content, build_extraction
-                            )
-                            pdf_data = extract_pdf(pdf_result.body)
-                            circular.content = build_content(pdf_data)
-                            circular.extraction = build_extraction(pdf_data)
-                            circular.provenance.raw_pdf_s3_key = pdf_key
-                        # is_s3_backed is True only if ALL stores succeeded on S3
-                        if not pdf_s3:
-                            circular.provenance.is_s3_backed = False
-
-            # ── Save ──
-            await save_circular(db, circular)
+            await save_circular(db, blocked_circ)
             await log_ingestion_event(
                 db,
-                event_type="circular_extracted",
-                circular_id=circular.id,
+                event_type="fetch_blocked",
+                circular_id=blocked_circ.id,
                 source_id=source_id,
                 detail={
                     "url": candidate.detail_url,
-                    "status": circular.processing.status,
+                    "reason": fetch_result.block_reason,
                 },
             )
-            run.documents_new += 1
+            run.blocked_requests += 1
+            errors.append({
+                "url": candidate.detail_url,
+                "reason": fetch_result.block_reason,
+                "http_status": fetch_result.status_code,
+                "error_detail": fetch_result.error_detail,
+                "stage": "detail",
+            })
             docs_processed += 1
+            break  # terminal failure: no repeated requests to a rejecting source
 
-        # ── Finalise run ──
-        run.pages_fetched = 1   # listing pages fetched (extend for paginated sources)
-        run.errors = errors
-        run.status = "completed"
-        run.completed_at = utcnow()
+        if fetch_result.not_modified:
+            run.documents_duplicate += 1
+            continue
 
-        await _update_crawl_run(
-            db, run,
-            status=run.status,
-            pages_fetched=run.pages_fetched,
-            documents_new=run.documents_new,
-            documents_duplicate=run.documents_duplicate,
-            blocked_requests=run.blocked_requests,
-            errors=errors,
-            completed_at=run.completed_at.isoformat(),
+        # ── Dedup by content hash ──
+        if fetch_result.content_hash:
+            if await is_duplicate(db, fetch_result.content_hash):
+                run.documents_duplicate += 1
+                continue
+
+        # ── Parse ──
+        try:
+            circular = await adapter.parse(candidate, fetch_result)
+        except Exception as exc:
+            errors.append({
+                "url": candidate.detail_url,
+                "reason": f"parse_error: {exc}",
+            })
+            docs_processed += 1
+            continue
+
+        await _store_primary_capture(circular, fetch_result)
+
+        # ── PDF attachments ──
+        for attachment in circular.attachments:
+            if attachment.type == "pdf" and attachment.url and attachment.s3_key is None:
+                pdf_result = await adapter.fetch(attachment.url)
+                if pdf_result.blocked:
+                    run.blocked_requests += 1
+                    errors.append({"stage": "attachment", "url": attachment.url,
+                                   "reason": pdf_result.block_reason,
+                                   "http_status": pdf_result.status_code,
+                                   "error_detail": pdf_result.error_detail})
+                    break
+                if not pdf_result.blocked and pdf_result.body:
+                    pdf_key, pdf_s3 = await store_raw(circular.id, pdf_result.body, "pdf")
+                    attachment.s3_key = pdf_key
+                    attachment.file_size_bytes = len(pdf_result.body)
+                    if not circular.content.original_text:
+                        from services.extraction_service import (
+                            extract_pdf, build_content, build_extraction
+                        )
+                        pdf_data = extract_pdf(pdf_result.body)
+                        circular.content = build_content(pdf_data)
+                        circular.extraction = build_extraction(pdf_data)
+                        circular.provenance.raw_pdf_s3_key = pdf_key
+
+        # ── Save ──
+        _require_extracted_text(circular)
+        if circular.processing.status == "manual_review_required":
+            errors.append({"stage": "extraction", "url": candidate.detail_url,
+                           "reason": "extraction_incomplete"})
+        await save_circular(db, circular)
+        await log_ingestion_event(
+            db,
+            event_type="circular_extracted",
+            circular_id=circular.id,
+            source_id=source_id,
+            detail={
+                "url": candidate.detail_url,
+                "status": circular.processing.status,
+            },
         )
+        run.documents_new += 1
+        docs_processed += 1
+        if adapter._halted is not None:
+            break
 
-        await adapter.close()
-
-    except Exception as exc:
-        run.status = "failed"
-        run.completed_at = utcnow()
-        await _update_crawl_run(
-            db, run,
-            status="failed",
-            completed_at=run.completed_at.isoformat(),
-            errors=[{"error": str(exc)}],
-        )
-
-    return run
 
 
 # ─── Pasted-text ingestion ────────────────────────────────────────────────────
