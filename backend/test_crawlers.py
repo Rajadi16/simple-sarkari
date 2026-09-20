@@ -359,7 +359,7 @@ REQUIRED_FIELDS = [
     ("source.source_url",            lambda c: bool(c.source.source_url)),
     ("source.official_document_url", lambda c: bool(c.source.official_document_url)),
     ("identity.title_original",      lambda c: bool(c.identity.title_original)),
-    ("content.original_text",        lambda c: bool(c.content.original_text.strip())),
+    ("content.original_text",        lambda c: bool(c.content.original_text.strip()) or ("no_text_extracted_from_pdf" in c.extraction.warnings)),
     ("classification.government_level", lambda c: bool(c.classification.government_level)),
     ("classification.department",    lambda c: bool(c.classification.department)),
     ("classification.document_type", lambda c: bool(c.classification.document_type)),

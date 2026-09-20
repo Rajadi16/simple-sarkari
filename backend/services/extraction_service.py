@@ -113,10 +113,12 @@ def _find_main_content(soup: BeautifulSoup):
         {"class": "post-content"},
         {"class": "release-content"},
         {"role": "main"},
+        {"class": "content-pusher"},
+        {"class": "vc_column-inner"},
     ]
     for selector in priority_selectors:
         el = soup.find(**selector)
-        if el and len(el.get_text(strip=True)) > 150:
+        if el and len(el.get_text(strip=True)) > 20:
             return el
 
     # Fallback: largest <div> by text length (exclude tiny nav divs)
@@ -124,7 +126,7 @@ def _find_main_content(soup: BeautifulSoup):
     best_len = 0
     for div in soup.find_all("div"):
         t = div.get_text(strip=True)
-        if len(t) > best_len and len(t) > 150:
+        if len(t) > best_len and len(t) > 50:
             best_len = len(t)
             best = div
     return best
@@ -137,7 +139,13 @@ def _strip_noise(soup: BeautifulSoup) -> None:
             el.decompose()
     # Class-based noise
     for el in soup.find_all(True):
-        classes = " ".join(el.get("class", []))
+        if not el.attrs:
+            continue
+        classes = el.attrs.get("class")
+        if not classes:
+            continue
+        if isinstance(classes, list):
+            classes = " ".join(classes)
         if _NOISE_CLASS_PATTERNS.search(classes):
             el.decompose()
 

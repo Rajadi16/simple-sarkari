@@ -70,6 +70,7 @@ class WordPressKarnatakaAdapter(BaseCrawlerAdapter):
         soup = BeautifulSoup(html, "lxml")
         candidates: list[CandidateDocument] = []
         base_host = urlparse(base_url).hostname or ""
+        base_domains = self.source.get("base_domains", [base_host])
         date_pat = re.compile(
             r"\b\d{1,2}[\-/.]\d{1,2}[\-/.]\d{4}\b"
             r"|\b\d{4}-\d{2}-\d{2}\b"
@@ -85,7 +86,7 @@ class WordPressKarnatakaAdapter(BaseCrawlerAdapter):
             href = a["href"].strip()
             abs_url = urljoin(base_url, href)
             host = urlparse(abs_url).hostname or ""
-            if host != base_host:
+            if not any(host.endswith(d) for d in base_domains):
                 continue
             title = _clean(a.get_text())
             if not title:
@@ -115,7 +116,8 @@ class WordPressKarnatakaAdapter(BaseCrawlerAdapter):
             if not href.lower().endswith(".pdf"):
                 continue
             abs_url = urljoin(base_url, href)
-            if urlparse(abs_url).hostname != base_host:
+            host = urlparse(abs_url).hostname or ""
+            if not any(host.endswith(d) for d in base_domains):
                 continue
             title = _clean(a.get_text()) or href.split("/")[-1].replace(".pdf", "")
             date_text = self._find_date_near(a, date_pat)

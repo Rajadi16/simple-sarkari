@@ -103,14 +103,15 @@ class DrupalKarnatakaAdapter(BaseCrawlerAdapter):
         )
 
         base_host = urlparse(base_url).hostname or ""
+        base_domains = self.source.get("base_domains", [base_host])
 
         for a in soup.find_all("a", href=True):
             href = a["href"].strip()
             abs_url = urljoin(base_url, href)
             host = urlparse(abs_url).hostname or ""
 
-            # Only follow links on same domain
-            if host != base_host:
+            # Only follow links on allowed domains
+            if not any(host.endswith(d) for d in base_domains):
                 continue
 
             is_pdf = href.lower().endswith(".pdf") or "/uploads/" in href or "/sites/default/files/" in href
