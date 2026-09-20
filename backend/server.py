@@ -22,8 +22,10 @@ async def lifespan(app: FastAPI):
     await connect_db()
     # Seed PIB source entry if not already present
     from lib.db import get_db as _get_db
-    from services.crawler_service import ensure_pib_source
-    await ensure_pib_source(_get_db())
+    from services.crawler_service import ensure_pib_source, ensure_all_sources
+    _db = _get_db()
+    await ensure_pib_source(_db)
+    await ensure_all_sources(_db)
     yield
     # ── Shutdown ──
     await close_db()
