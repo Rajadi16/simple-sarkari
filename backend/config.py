@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     aws_access_key_id: str | None = None
     aws_secret_access_key: str | None = None
     s3_bucket: str = "janvaani-dev"
+    aws_sqs_queue_url: str = ""
+    sagemaker_endpoint_name: str = ""
     bedrock_model_id: str = "anthropic.claude-3-sonnet-20240229-v1:0"
     polly_region: str = "ap-south-1"
     ses_sender_email: str = "alerts@janvaani.in"
