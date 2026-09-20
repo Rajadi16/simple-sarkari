@@ -46,7 +46,6 @@ def _infer_doc_type(text: str, url: str) -> str:
         return "treasury_order"
     return "circular"
 
-
 class KarnatakaFinanceAdapter(BaseCrawlerAdapter):
     """Adapter for Karnataka Finance Department."""
 
@@ -68,7 +67,7 @@ class KarnatakaFinanceAdapter(BaseCrawlerAdapter):
 
     async def fetch_listing(self) -> list[CandidateDocument]:
         candidates: list[CandidateDocument] = []
-        seed_urls = self.source.get("seed_urls", _LISTING_URLS)
+        seed_urls = self.listing_urls(_LISTING_URLS)
         max_docs = self.source.get("max_documents_per_run", 50)
 
         for seed_url in seed_urls:
@@ -90,13 +89,28 @@ class KarnatakaFinanceAdapter(BaseCrawlerAdapter):
 
         for a in soup.find_all("a", href=True):
             href = a["href"].strip()
-            if not (href.lower().endswith(".pdf") or "storage" in href or "upload" in href):
+            # Finance site uses /uploads/ for PDFs (not /storage/)
+            is_pdf = (
+                href.lower().endswith(".pdf")
+                or "/uploads/" in href
+                or "/storage/" in href
+            )
+            if not is_pdf:
                 continue
+
             abs_url = urljoin(base_url, href)
+            # Fix http → https and ensure domain is correct
+            if abs_url.startswith("http://finance.karnataka.gov.in"):
+                abs_url = abs_url.replace("http://", "https://", 1)
             if not self.is_allowed_domain(abs_url):
                 continue
 
-            title = _clean(a.get_text()) or _clean(urlparse(href).path.split("/")[-1])
+            title = _clean(a.get_text())
+            # Strip leading numbering like "1New2 days ago" from Finance listing
+            title = re.sub(r"^\d+(?:New)?\d*\s*(?:days?|weeks?|months?|years?)\s*ago\s*", "", title).strip()
+            if not title:
+                title = _clean(urlparse(href).path.split("/")[-1].replace("%20", " "))
+
             date_text: Optional[str] = None
             el = a
             for _ in range(4):
@@ -112,7 +126,7 @@ class KarnatakaFinanceAdapter(BaseCrawlerAdapter):
             candidates.append(CandidateDocument(
                 source_id="karnataka_finance",
                 detail_url=abs_url, document_url=abs_url,
-                title=title[:500],
+                title=title[:500] or "Karnataka Finance Document",
                 published_date_text=date_text,
                 document_type=_infer_doc_type(title, href),
                 department="Department of Finance, Government of Karnataka",

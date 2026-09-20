@@ -18,24 +18,59 @@ from config import get_settings
 # Only domains on this list may be fetched. No guessing, no wildcards.
 
 ALLOWED_DOMAINS: set[str] = {
-    # PIB — Day-1 target
+    # PIB
     "pib.gov.in",
     "www.pib.gov.in",
     "static.pib.gov.in",
     # Central govt
     "dopt.gov.in",
     "www.dopt.gov.in",
+    "doptcirculars.nic.in",
+    "documents.doptcirculars.nic.in",
     "egazette.gov.in",
     "www.egazette.gov.in",
     "doe.gov.in",
     "www.doe.gov.in",
     "india.gov.in",
     "www.india.gov.in",
-    # Karnataka state
-    "egazette.karnataka.gov.in",
+    # Karnataka state portals
+    "erajyapatra.karnataka.gov.in",
     "dpar.karnataka.gov.in",
     "finance.karnataka.gov.in",
-    "itbt.karnataka.gov.in",
+    "eitbt.karnataka.gov.in",
+    "karnataka.gov.in",
+    "www.karnataka.gov.in",
+    # Karnataka education
+    "vtu.ac.in",
+    "www.vtu.ac.in",
+    "kseab.karnataka.gov.in",
+    "www.kseab.karnataka.gov.in",
+    # Karnataka utilities / energy
+    "bescom.karnataka.gov.in",
+    "www.bescom.karnataka.gov.in",
+    "kptcl.karnataka.gov.in",
+    "www.kptcl.karnataka.gov.in",
+    "kerc.karnataka.gov.in",
+    "www.kerc.karnataka.gov.in",
+    "mescom.karnataka.gov.in",
+    "www.mescom.karnataka.gov.in",
+    # Karnataka water / infra
+    "bwssb.karnataka.gov.in",
+    "www.bwssb.karnataka.gov.in",
+    "kuwsdb.karnataka.gov.in",
+    "www.kuwsdb.karnataka.gov.in",
+    "gba.karnataka.gov.in",
+    "www.gba.karnataka.gov.in",
+    # Karnataka civic / environment
+    "kspcb.karnataka.gov.in",
+    "www.kspcb.karnataka.gov.in",
+    "sevasindhu.karnataka.gov.in",
+    "www.sevasindhu.karnataka.gov.in",
+    "ssp.karnataka.gov.in",
+    "www.ssp.karnataka.gov.in",
+    # KSRTC
+    "ksrtc.in",
+    "www.ksrtc.in",
 }
 
 # Private / reserved IP ranges blocked to prevent SSRF.
@@ -49,10 +84,18 @@ _BLOCKED_NETWORKS = [
     ipaddress.ip_network("fc00::/7"),
 ]
 
-# In-process robots.txt cache: domain → (allowed_paths set, timestamp)
-_robots_cache: dict[str, tuple[RobotFileParser, float]] = {}
-_robots_cache_lock = asyncio.Lock()
+# In-process robots.txt cache: domain → (RobotFileParser, monotonic_timestamp)
+_robots_cache: dict[str, tuple] = {}
+_robots_cache_lock: asyncio.Lock | None = None
 _ROBOTS_CACHE_TTL_SECONDS = 3600  # re-fetch robots.txt once per hour
+
+
+def _get_robots_lock() -> asyncio.Lock:
+    """Return the robots cache lock, creating it lazily on first use within the running loop."""
+    global _robots_cache_lock
+    if _robots_cache_lock is None:
+        _robots_cache_lock = asyncio.Lock()
+    return _robots_cache_lock
 
 
 def validate_url(url: str) -> str:
@@ -115,7 +158,7 @@ async def check_robots_txt(url: str, user_agent: str = "*") -> bool:
     domain = parsed.hostname or ""
     robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
 
-    async with _robots_cache_lock:
+    async with _get_robots_lock():
         cached = _robots_cache.get(domain)
         now = time.monotonic()
 
@@ -124,26 +167,24 @@ async def check_robots_txt(url: str, user_agent: str = "*") -> bool:
             # needed since we just built robots_url from the already-validated domain)
             rp = RobotFileParser()
             rp.set_url(robots_url)
+            allow_all = False   # will be set True if robots.txt is absent/unreachable
+
             try:
                 settings = get_settings()
                 async with httpx.AsyncClient(
                     timeout=10,
                     headers={"User-Agent": settings.crawler_user_agent},
                     follow_redirects=True,
+                    verify=False,   # NIC CA / self-signed certs on .gov.in domains
                 ) as client:
                     resp = await client.get(robots_url)
                     if resp.status_code == 200:
                         body = resp.text
 
                         # ── False-positive guard ──────────────────────────────
-                        # Some gov sites (e.g. PIB on certain IPs) serve an HTML
-                        # error page with HTTP 200 instead of a real robots.txt.
-                        # RobotFileParser would misread HTML tags like <html>,
-                        # <head>, <title> as malformed directives and sometimes
+                        # Some gov sites serve an HTML error page with HTTP 200.
+                        # RobotFileParser misreads HTML as directives and may
                         # infer Disallow: / — blocking all fetches incorrectly.
-                        # Detection: a real robots.txt never starts with an HTML
-                        # tag. If the body looks like HTML, treat it as
-                        # "robots.txt unavailable → assume allowed."
                         stripped = body.lstrip()
                         is_html_response = (
                             stripped.lower().startswith("<!doctype")
@@ -154,20 +195,19 @@ async def check_robots_txt(url: str, user_agent: str = "*") -> bool:
                             or "request rejected" in stripped[:200].lower()
                         )
                         if is_html_response:
-                            # Not a real robots.txt — treat as absent (allow all)
-                            _robots_cache[domain] = (rp, now)
-                            return True
-
-                        rp.parse(body.splitlines())
+                            allow_all = True
+                        else:
+                            rp.parse(body.splitlines())
                     else:
-                        # Non-200 (403, 404, 5xx) — robots.txt not available,
-                        # assume allowed per robots.txt spec.
-                        _robots_cache[domain] = (rp, now)
-                        return True
+                        # Non-200 — robots.txt not available, assume allowed
+                        allow_all = True
             except Exception:
-                # Network error fetching robots.txt — allow
-                _robots_cache[domain] = (rp, now)
-                return True
+                # Network/SSL error fetching robots.txt — allow
+                allow_all = True
+
+            if allow_all:
+                # Cache a fully-permissive parser so can_fetch() always returns True
+                rp.parse(["User-agent: *", "Allow: /"])
 
             _robots_cache[domain] = (rp, now)
 

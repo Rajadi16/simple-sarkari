@@ -24,11 +24,12 @@ No REVIEWER_TOKEN needed — this script calls services directly, not via HTTP.
 import asyncio
 import sys
 import os
+import pytest
 
 # ── Ensure backend/ is on the import path ─────────────────────────────────────
-sys.path.insert(0, os.path.dirname(__file__))
 
-from motor.motor_asyncio import AsyncIOMotorClient
+
+
 from config import get_settings
 
 
@@ -48,15 +49,15 @@ def header(msg): print(f"\n{BOLD}{msg}{RESET}")
 # ─── DB setup ─────────────────────────────────────────────────────────────────
 
 async def get_test_db():
-    settings = get_settings()
-    client = AsyncIOMotorClient(settings.mongo_url)
-    db = client[settings.db_name + "_test"]   # use a separate test DB
+    from mongomock_motor import AsyncMongoMockClient
+    client = AsyncMongoMockClient()
+    db = client.get_database("sarkari_test")
     return client, db
 
 
 # ─── AC1: Real PIB URL → CanonicalCircular ────────────────────────────────────
 
-async def test_real_pib_url(db) -> str:
+async def run_real_pib_url(db) -> str:
     """
     Fetch a real PIB press release and verify the resulting CanonicalCircular
     satisfies all required fields from CONTEXT.md §4.4.
@@ -135,7 +136,7 @@ async def test_real_pib_url(db) -> str:
 
 # ─── AC2: Duplicate detection ────────────────────────────────────────────────
 
-async def test_dedup(db, test_url: str):
+async def run_dedup(db, test_url: str):
     """
     Run the same URL again — must not create a second document.
     """
@@ -174,7 +175,7 @@ async def test_dedup(db, test_url: str):
 
 # ─── AC3: Blocked fetch → manual_review_required ─────────────────────────────
 
-async def test_blocked_fetch(db):
+async def run_blocked_fetch(db):
     """
     Simulate a 403 response by monkey-patching the adapter's fetch() method.
     Must produce processing.status = 'manual_review_required', no exception.
@@ -267,7 +268,7 @@ async def test_blocked_fetch(db):
 
 # ─── AC4: Pasted-text fallback ────────────────────────────────────────────────
 
-async def test_pasted_text(db):
+async def run_pasted_text(db):
     """
     Ingest pasted text — must produce a valid CanonicalCircular with
     null http_status / raw_html_s3_key, zero network calls.
@@ -336,7 +337,8 @@ async def cleanup(client, db):
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
-async def main():
+@pytest.mark.asyncio
+async def test_pipeline():
     print(f"\n{BOLD}{'='*60}")
     print("  JanVaani — Person 1 Pipeline Acceptance Tests")
     print(f"{'='*60}{RESET}")
@@ -348,7 +350,7 @@ async def main():
 
     # AC1
     try:
-        circular_id, test_url, ac1 = await test_real_pib_url(db)
+        circular_id, test_url, ac1 = await run_real_pib_url(db)
         results["AC1"] = ac1
     except Exception as exc:
         fail(f"AC1 raised an exception: {exc}")
@@ -357,21 +359,21 @@ async def main():
 
     # AC2
     try:
-        results["AC2"] = await test_dedup(db, test_url)
+        results["AC2"] = await run_dedup(db, test_url)
     except Exception as exc:
         fail(f"AC2 raised an exception: {exc}")
         results["AC2"] = False
 
     # AC3
     try:
-        results["AC3"] = await test_blocked_fetch(db)
+        results["AC3"] = await run_blocked_fetch(db)
     except Exception as exc:
         fail(f"AC3 raised an exception: {exc}")
         results["AC3"] = False
 
     # AC4
     try:
-        results["AC4"] = await test_pasted_text(db)
+        results["AC4"] = await run_pasted_text(db)
     except Exception as exc:
         fail(f"AC4 raised an exception: {exc}")
         results["AC4"] = False
@@ -389,13 +391,4 @@ async def main():
     await cleanup(client, db)
 
     print()
-    if all_pass:
-        print(f"{GREEN}{BOLD}All acceptance criteria passed.{RESET}")
-        sys.exit(0)
-    else:
-        print(f"{RED}{BOLD}One or more acceptance criteria failed.{RESET}")
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    assert all_pass, "One or more acceptance criteria failed."

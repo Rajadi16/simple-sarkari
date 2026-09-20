@@ -7,7 +7,7 @@ eGazette publishes official Indian gazettes as PDFs. The listing page
 has a search interface; we target the "Recent Gazettes" or direct
 listing pages that return gazette entries with PDF download links.
 
-SSL note: egazette.gov.in uses NIC CA — verify=False applied.
+Uses the shared HTTPS client with certificate verification enabled.
 """
 
 from __future__ import annotations
@@ -26,10 +26,7 @@ from models.circular import (
     Identity, Dates, Content, Attachment, Provenance, Extraction, Processing,
 )
 
-_LISTING_URLS = [
-    "https://egazette.gov.in/WriteReadData/2026",
-    "https://egazette.gov.in/(S(a))/default.aspx",
-]
+_LISTING_URLS = ["https://egazette.gov.in/"]
 
 _PDF_PATTERN = re.compile(r"\.pdf$", re.I)
 
@@ -44,23 +41,9 @@ class EGazetteAdapter(BaseCrawlerAdapter):
     PARSER_NAME = "egazette_india_v1"
     PARSER_VERSION = "1.0.0"
 
-    async def _get_client(self):
-        import httpx
-        from config import get_settings
-        if self._client is None or self._client.is_closed:
-            settings = get_settings()
-            self._client = httpx.AsyncClient(
-                headers={"User-Agent": settings.crawler_user_agent},
-                timeout=httpx.Timeout(settings.crawler_request_timeout_seconds),
-                follow_redirects=True,
-                max_redirects=5,
-                verify=False,  # NIC CA not in Python's trust store
-            )
-        return self._client
-
     async def fetch_listing(self) -> list[CandidateDocument]:
         candidates: list[CandidateDocument] = []
-        seed_urls = self.source.get("seed_urls", _LISTING_URLS)
+        seed_urls = self.listing_urls(_LISTING_URLS)
         max_docs = self.source.get("max_documents_per_run", 50)
 
         for seed_url in seed_urls:
@@ -193,6 +176,6 @@ class EGazetteAdapter(BaseCrawlerAdapter):
             ),
             extraction=extraction,
             processing=Processing(status="extracted", published=False),
-            source_specific_metadata={"ssl_note": "NIC_CA_verify_false"},
+            source_specific_metadata={},
             created_at=now, updated_at=now,
         )

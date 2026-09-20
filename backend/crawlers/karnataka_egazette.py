@@ -1,13 +1,13 @@
 """
-Karnataka eGazette adapter — egazette.karnataka.gov.in
+Karnataka eGazette adapter — erajyapatra.karnataka.gov.in
 
 Person 1 (Aditya) — Ingestion & Source Verification
 
 Karnataka eGazette publishes state gazette notifications as PDFs.
 Listing pages show gazette part, date, and a PDF download link.
 
-SSL/DNS note: egazette.karnataka.gov.in uses NIC CA and has intermittent
-DNS issues. verify=False applied; network errors produce manual_review_required.
+Uses the official session-negotiating homepage and verified HTTPS. Direct PDF
+links are supported; form-only downloads require a separately verified parser.
 """
 
 from __future__ import annotations
@@ -26,10 +26,7 @@ from models.circular import (
     Identity, Dates, Content, Attachment, Provenance, Extraction, Processing,
 )
 
-_LISTING_URLS = [
-    "https://egazette.karnataka.gov.in/Gazettes.aspx",
-    "https://egazette.karnataka.gov.in/",
-]
+_LISTING_URLS = ["https://erajyapatra.karnataka.gov.in/"]
 
 
 def _clean(text: str) -> str:
@@ -42,23 +39,9 @@ class KarnatakaGazetteAdapter(BaseCrawlerAdapter):
     PARSER_NAME = "karnataka_egazette_v1"
     PARSER_VERSION = "1.0.0"
 
-    async def _get_client(self):
-        import httpx
-        from config import get_settings
-        if self._client is None or self._client.is_closed:
-            settings = get_settings()
-            self._client = httpx.AsyncClient(
-                headers={"User-Agent": settings.crawler_user_agent},
-                timeout=httpx.Timeout(settings.crawler_request_timeout_seconds),
-                follow_redirects=True,
-                max_redirects=5,
-                verify=False,  # NIC CA
-            )
-        return self._client
-
     async def fetch_listing(self) -> list[CandidateDocument]:
         candidates: list[CandidateDocument] = []
-        seed_urls = self.source.get("seed_urls", _LISTING_URLS)
+        seed_urls = self.listing_urls(_LISTING_URLS)
         max_docs = self.source.get("max_documents_per_run", 50)
 
         for seed_url in seed_urls:
@@ -156,11 +139,32 @@ class KarnatakaGazetteAdapter(BaseCrawlerAdapter):
         circular_id = "circular_" + uuid.uuid4().hex
         now = utcnow()
 
-        from services.extraction_service import extract_pdf, build_content, build_extraction
-        ext = extract_pdf(result.body, candidate.detail_url)
+        ct = (result.content_type or "").lower()
+        is_pdf = "pdf" in ct or candidate.detail_url.lower().endswith(".pdf")
+
+        if is_pdf:
+            from services.extraction_service import extract_pdf, build_content, build_extraction
+            ext = extract_pdf(result.body, candidate.detail_url)
+            method = "pdf"
+        else:
+            # Received HTML — this is a navigation/session page, not a gazette document.
+            # Extract what text is available but mark as manual_review_required since
+            # actual gazette PDFs require ASP.NET postback interaction (form-only download).
+            from services.extraction_service import extract_html, build_content, build_extraction
+            ext = extract_html(result.body, candidate.detail_url)
+            method = "html"
+
         content = build_content(ext)
         extraction = build_extraction(ext)
-        extraction.method = "pdf"
+        extraction.method = method
+
+        # If we got HTML instead of a PDF, flag it — the postback form adapter
+        # is not yet implemented. Evidence is in data/browser-inspection/.
+        processing_status = "extracted" if is_pdf and content.original_text else "manual_review_required"
+        if not is_pdf:
+            extraction.warnings.append("gazette_postback_form_not_implemented")
+            extraction.missing_fields.append("content.original_text")
+
         title = ext.get("title") or candidate.title or "Karnataka Gazette Notification"
 
         date_text = candidate.published_date_text
@@ -169,12 +173,19 @@ class KarnatakaGazetteAdapter(BaseCrawlerAdapter):
             dt = parse_indian_date(date_text)
             published_date = dt.strftime("%Y-%m-%d") if dt else None
 
+        attachments = []
+        if is_pdf:
+            attachments = [Attachment(
+                url=candidate.detail_url, type="pdf", title=title,
+                file_size_bytes=len(result.body) if result.body else None, s3_key=None,
+            )]
+
         return CanonicalCircular(
             id=circular_id,
             source=SourceInfo(
                 source_id="karnataka_egazette",
                 source_name="Karnataka eGazette",
-                source_domain="egazette.karnataka.gov.in",
+                source_domain=urlparse(candidate.detail_url).hostname or "erajyapatra.karnataka.gov.in",
                 source_url=candidate.detail_url,
                 discovered_from_url=candidate.discovered_from_url,
                 official_document_url=candidate.detail_url,
@@ -193,10 +204,7 @@ class KarnatakaGazetteAdapter(BaseCrawlerAdapter):
             ),
             dates=Dates(published_date=published_date, date_text_original=date_text),
             content=content,
-            attachments=[Attachment(
-                url=candidate.detail_url, type="pdf", title=title,
-                file_size_bytes=len(result.body) if result.body else None, s3_key=None,
-            )],
+            attachments=attachments,
             provenance=Provenance(
                 retrieved_at=result.fetched_at, retrieval_timezone="Asia/Kolkata",
                 http_status=result.status_code,
@@ -205,7 +213,7 @@ class KarnatakaGazetteAdapter(BaseCrawlerAdapter):
                 robots_checked=self.source.get("respect_robots", True), terms_checked=True,
             ),
             extraction=extraction,
-            processing=Processing(status="extracted", published=False),
-            source_specific_metadata={"ssl_note": "NIC_CA_verify_false"},
+            processing=Processing(status=processing_status, published=False),
+            source_specific_metadata={"postback_form": not is_pdf},
             created_at=now, updated_at=now,
         )

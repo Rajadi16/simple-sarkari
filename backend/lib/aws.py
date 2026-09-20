@@ -15,6 +15,14 @@ _bedrock_client = None
 _polly_client = None
 
 
+def _get_boto3_kwargs(settings):
+    kwargs = {}
+    if settings.aws_access_key_id and settings.aws_secret_access_key:
+        kwargs["aws_access_key_id"] = settings.aws_access_key_id
+        kwargs["aws_secret_access_key"] = settings.aws_secret_access_key
+    return kwargs
+
+
 def get_s3_client():
     """Returns a boto3 S3 client."""
     global _s3_client
@@ -22,7 +30,7 @@ def get_s3_client():
         settings = get_settings()
         if not settings.aws_enabled:
             raise RuntimeError("AWS integration is disabled")
-        _s3_client = boto3.client("s3", region_name=settings.aws_region)
+        _s3_client = boto3.client("s3", region_name=settings.aws_region, **_get_boto3_kwargs(settings))
     return _s3_client
 
 
@@ -32,7 +40,7 @@ def get_bedrock_client():
     if _bedrock_client is None:
         settings = get_settings()
         _bedrock_client = boto3.client(
-            "bedrock-runtime", region_name=settings.aws_region
+            "bedrock-runtime", region_name=settings.aws_region, **_get_boto3_kwargs(settings)
         )
     return _bedrock_client
 
@@ -42,7 +50,7 @@ def get_polly_client():
     global _polly_client
     if _polly_client is None:
         settings = get_settings()
-        _polly_client = boto3.client("polly", region_name=settings.polly_region)
+        _polly_client = boto3.client("polly", region_name=settings.polly_region, **_get_boto3_kwargs(settings))
     return _polly_client
 
 

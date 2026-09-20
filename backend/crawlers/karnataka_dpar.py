@@ -76,7 +76,7 @@ class KarnatakaDparAdapter(BaseCrawlerAdapter):
 
     async def fetch_listing(self) -> list[CandidateDocument]:
         candidates: list[CandidateDocument] = []
-        seed_urls = self.source.get("seed_urls", _LISTING_PAGES)
+        seed_urls = self.listing_urls(_LISTING_PAGES)
         max_docs = self.source.get("max_documents_per_run", 50)
 
         for seed_url in seed_urls:
