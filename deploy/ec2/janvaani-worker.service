@@ -1,0 +1,18 @@
+[Unit]
+Description=JanVaani SQS Worker
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/simple-sarkari-/backend
+EnvironmentFile=/home/ubuntu/simple-sarkari-/backend/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ubuntu/simple-sarkari-/backend/.venv/bin/python queue_worker_daemon.py
+Restart=always
+RestartSec=5
+TimeoutStopSec=180
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
